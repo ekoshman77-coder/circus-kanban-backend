@@ -1,0 +1,32 @@
+version: '3.8'
+
+services:
+  # 1. Unsere PostgreSQL Datenbank
+  postgres-db:
+    image: postgres:15-alpine
+    container_name: todo-postgres
+    environment:
+      POSTGRES_DB: tododb
+      POSTGRES_USER: elena
+      POSTGRES_PASSWORD: geheimwasanderes
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+  # 2. Deine Kotlin Spring Boot App
+  todo-backend:
+    build: .
+    container_name: todo-backend-app
+    ports:
+      - "8081:8080"
+    depends_on:
+      - postgres-db
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres-db:5432/tododb
+      SPRING_DATASOURCE_USERNAME: elena
+      SPRING_DATASOURCE_PASSWORD: geheimwasanderes
+      SPRING_JPA_HIBERNATE_DDL_AUTO: update
+
+volumes:
+  postgres_data:

@@ -1,0 +1,8 @@
+spring:
+  datasource:
+    url: jdbc:postgresql://localhost:5432/tododb
+    username: elena
+    password: geheimwasanderes
+  jpa:
+    hibernate:
+      ddl-auto: update

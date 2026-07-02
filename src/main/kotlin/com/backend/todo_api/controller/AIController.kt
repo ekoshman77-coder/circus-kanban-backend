@@ -1,0 +1,96 @@
+package com.backend.todo_api.controller
+
+import com.backend.todo_api.dto.PredictionRequest
+import com.backend.todo_api.dto.PredictionResponse
+import com.backend.todo_api.dto.EffortPredictionResponse
+import com.backend.todo_api.dto.FocusPredictionResponse
+import com.backend.todo_api.dto.PlannerFeedbackRequest
+import com.backend.todo_api.dto.PlannerRecommendationRequest
+import com.backend.todo_api.dto.RecommendedTodoResponse
+import com.backend.todo_api.model.AiContextType
+import com.backend.todo_api.services.SmartPlannerService
+import com.backend.todo_api.services.TrainManager
+import org.springframework.web.bind.annotation.*
+
+@CrossOrigin(origins = ["http://localhost:4200"])
+@RestController
+@RequestMapping("/api/ai")
+class AIController(private val trainManager: TrainManager,
+    private val smartPlannerService: SmartPlannerService
+) {
+
+    /**
+     * 🔮 1. Globaler KI-Kategorievorschlag
+     * POST /api/ai/predict
+     */
+    @PostMapping("/predict")
+    fun getPrediction(@RequestBody request: PredictionRequest): PredictionResponse {
+        // Da die Vorhersage global läuft, ignorieren wir request.userId einfach im Hintergrund!
+        val suggestion = trainManager.trainAndPredictGlobal(
+            text = request.text,
+            contextType = AiContextType.TODO_CATEGORY
+        )
+        return PredictionResponse(suggestedCategory = suggestion)
+    }
+
+    /**
+     * ⏱️ 2. Globaler KI-Aufwandsschätzer
+     * POST /api/ai/predict-effort
+     */
+    @PostMapping("/predict-effort")
+    fun predictEffort(@RequestBody request: PredictionRequest): EffortPredictionResponse {
+        val estimatedHours = trainManager.predictGlobalEffort(text = request.text)
+
+        return EffortPredictionResponse(
+            suggestedEffort = estimatedHours,
+        )
+    }
+
+    /**
+     * 📋 3. Globale Kategorieliste abrufen (z.B. für Autocomplete-Dropdowns im Frontend)
+     * GET /api/ai/categories?contextType=todo
+     */
+    @GetMapping("/categories")
+    fun getCategories(@RequestParam contextType: String): List<String> {
+        return trainManager.getAllGlobalCategories(AiContextType.TODO_CATEGORY)
+    }
+
+    @PostMapping("/todo-focus")
+    fun predictTodoFocus(@RequestBody request: PredictionRequest): FocusPredictionResponse {
+        // 🧠 Wir füttern das trainierte Naive-Bayes Gehirn im RAM mit dem Task-Text!
+        val focus = trainManager.predictGlobalFocus(request.text)
+        val answer = focus.name //  == FocusType.HIGH_FOCUS? 'HIGH_FOCUS' : "LOW_FOCUS"
+        return FocusPredictionResponse(focus = answer) // Gibt HIGH_FOCUS oder LOW_FOCUS zurück
+    }
+
+    /**
+     * Berechnet die perfekte, smarte Empfehlung für den Planer (inkl. Modus-Codes!)
+     * POST /api/ai/planner/recommend
+     */
+    @PostMapping("/planner/recommend")
+    fun getPlannerRecommendation(@RequestBody request: PlannerRecommendationRequest): RecommendedTodoResponse {
+        // Der smartPlannerService gibt jetzt direkt das neue RecommendedTodoResponse-Objekt
+        // mit modeCode und reasonCode zurück!
+        return smartPlannerService.calculatePerfectRecommendation(
+            userId = request.userId,
+            userEnergy = request.userEnergy,
+            workingTimeLeft = request.workingTimeLeft
+        )
+    }
+
+    /**
+     * Nimmt das Nutzer-Feedback entgegen, damit unser System nativ lernt
+     * POST /api/ai/planner/feedback
+     */
+    @PostMapping("/planner/feedback")
+    fun handlePlannerFeedback(@RequestBody request: PlannerFeedbackRequest): org.springframework.http.ResponseEntity<Unit> {
+        smartPlannerService.processUserFeedback(
+            userId = request.userId,
+            todoId = request.todoId,
+            accepted = request.accepted,
+            rejectReason = request.rejectReason,
+            currentEnergy = request.currentEnergy
+        )
+        return org.springframework.http.ResponseEntity.ok().build()
+    }
+}
