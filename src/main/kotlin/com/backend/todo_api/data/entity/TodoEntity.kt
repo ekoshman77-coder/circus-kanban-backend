@@ -33,5 +33,8 @@ class TodoEntity(
     var isStarted: Boolean = false,
 
     @Column(name = "focus_type", nullable = false)
-    var focusType: String = "LOW_FOCUS"
+    var focusType: String = "LOW_FOCUS",
+
+    @Column(name = "team_status", nullable = false)
+    var teamStatus: String = "BACKLOG",
 )

@@ -1,6 +1,8 @@
 package com.backend.todo_api.controller
 
 import com.backend.todo_api.dto.CreateUserDto
+import com.backend.todo_api.dto.OnRegisterOrLogin
+import com.backend.todo_api.dto.OnUpdate
 import com.backend.todo_api.services.UserAlreadyExistsException
 import com.backend.todo_api.services.UserNotFoundException
 import com.backend.todo_api.services.UserService
@@ -11,6 +13,7 @@ import io.swagger.v3.oas.annotations.tags.Tag
 import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
 import org.springframework.security.web.csrf.CsrfToken
+import org.springframework.validation.annotation.Validated
 import org.springframework.web.bind.annotation.*
 
 @RestController
@@ -26,7 +29,7 @@ class UserController(private val userService: UserService) {
         ApiResponse(responseCode = "400", description = "Ungültige Eingabe (Name leer)"),
         ApiResponse(responseCode = "404", description = "Benutzername existiert nicht")
     ])
-    fun loginUser(@RequestBody dto: CreateUserDto): ResponseEntity<Any> {
+    fun loginUser(@Validated(OnRegisterOrLogin::class) @RequestBody dto: CreateUserDto): ResponseEntity<Any> {
         if (dto.username.isBlank()) {
             return ResponseEntity.badRequest().body(mapOf("error" to "Name darf nicht leer sein!"))
         }
@@ -44,7 +47,7 @@ class UserController(private val userService: UserService) {
         ApiResponse(responseCode = "400", description = "Ungültige Eingabe (Name leer)"),
         ApiResponse(responseCode = "409", description = "Name ist bereits vergeben")
     ])
-    fun registerUser(@RequestBody dto: CreateUserDto): ResponseEntity<Any> {
+    fun registerUser(@Validated(OnRegisterOrLogin::class) @RequestBody dto: CreateUserDto): ResponseEntity<Any> {
         if (dto.username.isBlank()) {
             return ResponseEntity.badRequest().body(mapOf("error" to "Name darf nicht leer sein!"))
         }
@@ -63,7 +66,7 @@ class UserController(private val userService: UserService) {
     ])
     fun updateProfile(
         @PathVariable id: String,
-        @RequestBody dto: CreateUserDto
+        @Validated(OnUpdate::class) @RequestBody dto: CreateUserDto
     ): ResponseEntity<Any> {
         return try {
             // Der Service ist zum Glück noch da und unversehrt!

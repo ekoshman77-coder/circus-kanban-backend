@@ -97,7 +97,7 @@ class TrainManager(
     /**
      * Holt alle global verfügbaren Kategorien des Kontextes für Vorschlagslisten im Frontend
      */
-    fun getAllGlobalCategories(contextType: AiContextType): List<String> {
+    fun getGlobalCategories(contextType: AiContextType): List<String> {
         val matchingProvider = globalDataProviders.find { it.getContextType() == contextType }
             ?: throw IllegalArgumentException("Kein KI-Provider für Typ '$contextType' registriert!")
 

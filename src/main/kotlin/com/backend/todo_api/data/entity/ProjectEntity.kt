@@ -33,13 +33,9 @@ class ProjectEntity(
     @OneToMany(mappedBy = "project", cascade = [CascadeType.ALL], orphanRemoval = true, fetch = FetchType.EAGER)
     var milestones: MutableList<MilestoneEntity> = mutableListOf(),
 
-    @ManyToMany(fetch = FetchType.LAZY)
-    @JoinTable(
-        name = "project_team_members",
-        joinColumns = [JoinColumn(name = "project_id")],
-        inverseJoinColumns = [JoinColumn(name = "user_id")]
-    )
-    var teamMembers: MutableList<UserEntity> = mutableListOf()
+    // 🚀 HIER WAR DER FEHLER: Wir tauschen das alte @ManyToMany gegen das neue @OneToMany aus!
+    @OneToMany(mappedBy = "project") // 🛡️ Keinerlei Kaskadierung mehr!
+    var teamMemberships: MutableList<ProjectMemberEntity> = mutableListOf()
 ) {
     constructor() : this(id = "proj_" + UUID.randomUUID().toString().take(11))
 
@@ -48,7 +44,7 @@ class ProjectEntity(
         milestone.project = this
     }
 
-    // ✨ Schicke Konvertierungsmethode -> Macht den Service extrem sauber!
+    // ✨ Schicke Konvertierungsmethode -> Jetzt angepasst an teamMemberships!
     fun toDto(): ProjectDto {
         val dto = ProjectDto()
         dto.id = this.id
@@ -59,21 +55,25 @@ class ProjectEntity(
         dto.content = this.content
         dto.status = this.status
         dto.fullMilestones = this.milestones.map { it.toDto() }
-        dto.teamMembers = this.teamMembers.map { UserDto(id = it.id, username = it.username, firstName = it.firstName, lastName = it.lastName) }
+
+        // 🗑️ ENTFARNT: Keine Zuweisung mehr an ein nicht-existierendes DTO-Feld!
+
         return dto
     }
 
-    fun addTeamMember(user: UserEntity) {
-        if (!teamMembers.contains(user)) {
-            teamMembers.add(user)
-            user.projects.add(this) // Wichtig für die beidseitige Verknüpfung!
+    fun addTeamMember(user: UserEntity, roleStr: String) {
+        val alreadyMember = teamMemberships.any { it.user.id == user.id }
+        if (!alreadyMember) {
+            // Nutzt die neue String-Spalte deiner ProjectMemberEntity!
+            val newMembership = ProjectMemberEntity(user = user, project = this, role = roleStr)
+            teamMemberships.add(newMembership)
+            user.projectMemberships.add(newMembership) // Beidseitige Verknüpfung im Speicher
         }
     }
 
+    // 🛑 Mitglied entfernen
     fun removeTeamMember(user: UserEntity) {
-        if (teamMembers.contains(user)) {
-            teamMembers.remove(user)
-            user.projects.remove(this)
-        }
+        teamMemberships.removeIf { it.user.id == user.id }
+        user.projectMemberships.removeIf { it.project.id == this.id }
     }
 }

@@ -6,3 +6,13 @@ spring:
   jpa:
     hibernate:
       ddl-auto: update
+bucket4j:
+  enabled: true
+  filters:
+    - name: rate-limit-filter
+      url: /api/.* # ⏱️ Schützt alle Pfade, die mit /api/ beginnen
+      rate-limits:
+        - bandwidths:
+            - capacity: 60       # Maximal 60 Anfragen
+              time: 1
+              unit: minutes

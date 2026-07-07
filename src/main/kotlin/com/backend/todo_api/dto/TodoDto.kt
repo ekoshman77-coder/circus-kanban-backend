@@ -13,7 +13,8 @@ open class CreateTodoDto(
     val category: String = "Allgemein",
     val milestoneId: String? = null,
     val assignedUserId: String? = null,
-    val isStarted: Boolean = false
+    val isStarted: Boolean = false,
+    val teamStatus: String = "BACKLOG",
 )
 
 class TodoDto(
@@ -33,7 +34,8 @@ class TodoDto(
     milestoneId: String? = null,
     assignedUserId: String? = null,
     isStarted: Boolean = false,
-    val effortChangesCount: Int? = 0 // Auch hier ein Standardwert
+    val effortChangesCount: Int? = 0,
+    teamStatus: String = "BACKLOG"
 ) : CreateTodoDto(
     task,
     description,
@@ -47,5 +49,6 @@ class TodoDto(
     category,
     milestoneId,
     assignedUserId,
-    isStarted
+    isStarted,
+    teamStatus
 )

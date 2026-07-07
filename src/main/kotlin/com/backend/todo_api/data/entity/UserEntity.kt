@@ -19,12 +19,16 @@ class UserEntity(
     @Column(name = "username", unique = true, nullable = false)
     val username: String = "",
 
+    @Column(name = "password", nullable = false) // 👈 NEU: Hier landet der unlesbare BCrypt-Zeichensalat!
+    var password: String = "",
+
     @Column(name = "xp", nullable = false)
     var xp: Int = 0,
 
     @Column(name = "level", nullable = false)
     var level: Int = 1,
 
-    @ManyToMany(mappedBy = "teamMembers", fetch = FetchType.LAZY)
-    var projects: MutableList<ProjectEntity> = mutableListOf()
+    @OneToMany(mappedBy = "user", cascade = [CascadeType.ALL], orphanRemoval = true)
+    var projectMemberships: MutableList<ProjectMemberEntity> = mutableListOf()
+
 )

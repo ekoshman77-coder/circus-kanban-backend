@@ -2,6 +2,7 @@ package com.backend.todo_api.services
 
 import com.backend.todo_api.data.entity.MilestoneEntity
 import com.backend.todo_api.data.entity.ProjectEntity
+import com.backend.todo_api.data.repository.ProjectMemberRepository
 import com.backend.todo_api.data.repository.ProjectRepository
 import com.backend.todo_api.data.repository.UserRepository
 import com.backend.todo_api.dto.CreateProjectDto
@@ -12,12 +13,13 @@ import org.springframework.stereotype.Service
 @Service
 class ProjectService(
     private val projectRepository: ProjectRepository,
-    private val userRepository: UserRepository
+    private val userRepository: UserRepository,
+    private val projectMemberRepository: ProjectMemberRepository
 ) {
 
     fun getProjectsByWithUser(userId: String?): List<ProjectDto> {
         return if (userId == null) projectRepository.findAll().map { it.toDto() }
-                else projectRepository.findByUserId(userId).map { it.toDto() }
+        else projectRepository.findByUserId(userId).map { it.toDto() }
     }
 
     fun getProjectById(id: String): ProjectDto {
@@ -28,33 +30,52 @@ class ProjectService(
 
     @Transactional
     fun createProject(dto: CreateProjectDto): ProjectDto {
-        // ✨ Hier nutzen wir die saubere Mapping-Methode des Services!
+        // 🏗️ Wir wandeln das DTO um (das Team bleibt dabei komplett LEER)
         val projectEntity = convertToEntity(dto)
+
+        // ❌ KEIN automatischer OWNER mehr! Der Ersteller (z.B. Admin)
+        // wird NICHT ungefragt in das Projektteam gedrückt.
+
         return projectRepository.save(projectEntity).toDto()
     }
 
     @Transactional
     fun updateProject(id: String, dto: CreateProjectDto): ProjectDto {
-        val existing = projectRepository.findById(id)
+        val existingProject = projectRepository.findById(id)
             .orElseThrow { RuntimeException("Projekt mit ID $id nicht gefunden") }
 
-        // Wir mappen das DTO zu einer temporären neuen Entity
-        val updatedFields = convertToEntity(dto)
+        // 1. 🛡️ DEINE IDEE: Wir retten die bestehenden Mitglieder aus der Zwischentabelle!
+        val existingMembers = projectMemberRepository.findByProjectId(id)
 
-        // Werte übertragen (ID des bestehenden Projekts bleibt erhalten)
-        existing.title = updatedFields.title
-        existing.area = updatedFields.area
-        existing.content = updatedFields.content
-        existing.status = updatedFields.status
+        // 2. Bestehende Meilensteine löschen (das soll so sein, weil das DTO neue liefert)
+        existingProject.milestones.clear()
 
-        // Listen sauber aktualisieren
-        existing.teamMembers.clear()
-        existing.teamMembers.addAll(updatedFields.teamMembers)
+        // 3. Stammdaten aus dem DTO übernehmen
+        existingProject.title = dto.title
+        existingProject.area = dto.area
+        existingProject.content = dto.content
+        existingProject.status = dto.status
 
-        existing.milestones.clear()
-        updatedFields.milestones.forEach { existing.addMilestone(it) }
+        // 4. Meilensteine neu mappen...
+        dto.milestones.forEach { mDto ->
+            val assignedUserEntity = mDto.assignedUserId?.let { userRepository.findById(it).orElse(null) }
+            val mEntity = MilestoneEntity(
+                title = mDto.title,
+                duration = mDto.duration,
+                usedDuration = mDto.usedDuration,
+                status = mDto.status,
+                orderIndex = mDto.orderIndex,
+                assignedUser = assignedUserEntity
+            )
+            existingProject.addMilestone(mEntity)
+        }
 
-        return projectRepository.save(existing).toDto()
+        // 5. 🛡️ DEINE IDEE TEIL 2: Wir weisen dem Projekt seine geretteten Mitglieder wieder zu!
+        existingProject.teamMemberships.clear()
+        existingProject.teamMemberships.addAll(existingMembers)
+
+        // 6. Jetzt speichern! Hibernate sieht die vollen Members und löscht absolut GAR NICHTS!
+        return projectRepository.save(existingProject).toDto()
     }
 
     @Transactional
@@ -64,11 +85,10 @@ class ProjectService(
         }
     }
 
-    // 🛠️ DEINE GENIALE MAPPING-METHODE:
-    // Sie kapselt die Logik perfekt, und nur der Service steuert die Repositories!
     private fun convertToEntity(dto: CreateProjectDto): ProjectEntity {
+        // 🌟 Wir erstellen die nackte Projekt-Entität
         val projectEntity = ProjectEntity(
-            userId = dto.userId,
+            userId = dto.userId, // Das Feld merkt sich weiterhin, WER das Projekt erstellt hat (wichtig für Audits!)
             ideaId = dto.ideaId,
             title = dto.title,
             area = dto.area,
@@ -76,11 +96,10 @@ class ProjectService(
             status = dto.status
         )
 
-        // 👤 Teammitglieder über das Repository auflösen (Vollkommen legitim im Service!)
-        val members = userRepository.findAllById(dto.teamMemberIds)
-        projectEntity.teamMembers = members.toMutableList()
+        // ❌ HIER WAR DIE FEHLERQUELLE: Die gesamte Schleife, die blind "DEVELOPER"
+        // eingetragen hat, wird komplett gelöscht. Das Team ist beim Erstellen leer!
 
-        // 🎯 Meilensteine umwandeln und den neuen orderIndex mitspeichern!
+        // 🎯 Meilensteine umwandeln (Das bleibt so, falls beim Erstellen direkt Meilensteine mitkommen)
         dto.milestones.forEach { mDto ->
             val assignedUserEntity = mDto.assignedUserId?.let {
                 userRepository.findById(it).orElse(null)
@@ -90,7 +109,7 @@ class ProjectService(
                 duration = mDto.duration,
                 usedDuration = mDto.usedDuration,
                 status = mDto.status,
-                orderIndex = mDto.orderIndex, // 🆕 Hier wird er ausgelesen!
+                orderIndex = mDto.orderIndex,
                 assignedUser = assignedUserEntity
             )
             projectEntity.addMilestone(mEntity)

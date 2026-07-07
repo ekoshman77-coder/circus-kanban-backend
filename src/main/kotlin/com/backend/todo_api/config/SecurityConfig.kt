@@ -7,12 +7,14 @@ import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
 import org.springframework.security.config.annotation.web.builders.HttpSecurity
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity
+import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder
 import org.springframework.security.web.SecurityFilterChain
 import org.springframework.security.web.authentication.www.BasicAuthenticationFilter
 import org.springframework.security.web.csrf.CookieCsrfTokenRepository
 import org.springframework.security.web.csrf.CsrfToken
 import org.springframework.security.web.csrf.CsrfTokenRequestHandler // Das Interface
 import org.springframework.security.web.csrf.DefaultCsrfToken
+import org.springframework.security.web.header.writers.XXssProtectionHeaderWriter
 import org.springframework.web.cors.CorsConfiguration
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource
 import org.springframework.web.filter.OncePerRequestFilter
@@ -21,6 +23,11 @@ import java.util.function.Supplier
 @Configuration
 @EnableWebSecurity
 class SecurityConfig {
+
+    @Bean
+    fun passwordEncoder(): BCryptPasswordEncoder {
+        return BCryptPasswordEncoder()
+    }
 
     @Bean
     fun securityFilterChain(http: HttpSecurity): SecurityFilterChain {
@@ -59,6 +66,18 @@ class SecurityConfig {
                 }
             }, BasicAuthenticationFilter::class.java)
 
+            //  DAS HELMET-ÄQUIVALENT: Sicherheits-Header für XSS- und Clickjacking-Schutz
+            .headers { headers ->
+                headers
+                    // 🛡️ Wir packen den String in die von Spring erwartete HeaderValue-Box!
+                    .xssProtection { it.headerValue(XXssProtectionHeaderWriter.HeaderValue.from( "1; mode=block")) }
+
+                    // Verhindert Clickjacking
+                    .frameOptions { it.deny() }
+
+                    // Schaltet Content-Type-Sniffing ab
+                    .contentTypeOptions { }
+            }
             // 4. Berechtigungen
             .authorizeHttpRequests { auth ->
                 auth.anyRequest().permitAll()

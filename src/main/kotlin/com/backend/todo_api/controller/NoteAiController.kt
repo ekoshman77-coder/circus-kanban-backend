@@ -24,12 +24,12 @@ class NoteAiController(private val trainManager: TrainManager) {
         return PredictionResponse(suggestedCategory = suggestion)
     }
 
-    /**
-     * Alle aktuell genutzten Zettel-Tags/Kategorien abrufen
-     * GET /api/ai/notes/categories
-     */
-    @GetMapping("/categories")
-    fun getNoteCategories(): List<String> {
-        return trainManager.getAllGlobalCategories(AiContextType.NOTE_TAG)
-    }
+//    /**
+//     * Alle aktuell genutzten Zettel-Tags/Kategorien abrufen
+//     * GET /api/ai/notes/categories
+//     */
+//    @GetMapping("/categories")
+//    fun getNoteCategories(): List<String> {
+//        return trainManager.getGlobalCategories(AiContextType.NOTE_TAG)
+//    }
 }

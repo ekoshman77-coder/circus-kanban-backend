@@ -4,7 +4,9 @@ enum class ErrorCode(val value: String) {
     USER_NOT_FOUND("USER_NOT_FOUND"),
     TODO_NOT_FOUND("TODO_NOT_FOUND"),
     INVALID_DATA("INVALID_DATA"),
-    WRONG_ENDPOINT("WRONG_ENDPOINT")
+    WRONG_ENDPOINT("WRONG_ENDPOINT"),
+    PROJECT_NOT_FOUND("PROJECT_NOT_FOUND"),
+    TEAM_VALIDATION_ERROR("TEAM_VALIDATION_ERROR")
 }
 
 data class ErrorResponse(
@@ -18,3 +20,5 @@ class TodoNotFoundException(message: String) : RuntimeException(message)
 class InvalidTodoException(message: String) : RuntimeException(message)
 class InvalidStatusRequestException(message: String): RuntimeException(message)
 class MilestoneNotFoundException(message: String) : RuntimeException(message)
+class ProjectNotFoundException(message: String) : RuntimeException(message)
+class TeamValidationException(message: String) : RuntimeException(message)

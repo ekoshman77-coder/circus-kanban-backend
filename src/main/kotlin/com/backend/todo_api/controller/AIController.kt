@@ -46,13 +46,20 @@ class AIController(private val trainManager: TrainManager,
         )
     }
 
+    @GetMapping("/todos/categories")
+    fun getTodoCategories(): List<String> {
+        println("📡 [AIController] GET /todos/categories aufgerufen")
+        return trainManager.getGlobalCategories(AiContextType.TODO_CATEGORY)
+    }
+
     /**
-     * 📋 3. Globale Kategorieliste abrufen (z.B. für Autocomplete-Dropdowns im Frontend)
-     * GET /api/ai/categories?contextType=todo
+     * 📋 2. Symmetrischer Endpunkt für NOTES / IDEEN-Tags
+     * GET /api/ai/notes/categories
      */
-    @GetMapping("/categories")
-    fun getCategories(@RequestParam contextType: String): List<String> {
-        return trainManager.getAllGlobalCategories(AiContextType.TODO_CATEGORY)
+    @GetMapping("/notes/categories")
+    fun getNoteCategories(): List<String> {
+        println("📡 [AIController] GET /notes/categories aufgerufen")
+        return trainManager.getGlobalCategories(AiContextType.NOTE_TAG)
     }
 
     @PostMapping("/todo-focus")
