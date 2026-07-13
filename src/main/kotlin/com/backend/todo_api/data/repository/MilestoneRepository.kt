@@ -8,4 +8,5 @@ import org.springframework.stereotype.Repository
 @Repository
 interface MilestoneRepository: JpaRepository<MilestoneEntity, String> {
     fun findByAssignedUserId(assignedUserId: String): List<MilestoneEntity>
+    fun findByProjectIdIn(projectIds: List<String>): List<MilestoneEntity>
 }

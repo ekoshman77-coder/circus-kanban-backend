@@ -35,6 +35,9 @@ class NoteEntity(
     @Column(name = "temperature", nullable = true)
     var temperature: Double? = null,
 
+    @Column(name = "is_archived")
+    var isArchived: Boolean = false,
+
     @Column(name = "weather_code", nullable = true)
     var weatherCode: Int? = null
 ) {

@@ -54,4 +54,5 @@ class MilestoneEntity(
             projectId =  project?.id // 📁 Hier wird die Projekt-ID flach mitgegeben
         )
         return dto
-    }}
+    }
+}

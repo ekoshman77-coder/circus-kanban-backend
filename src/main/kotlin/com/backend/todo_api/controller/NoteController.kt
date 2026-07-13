@@ -44,8 +44,11 @@ class NoteController(private val noteService: NoteService) {
     }
 
     @DeleteMapping("/{id}")
-    @ResponseStatus(HttpStatus.NO_CONTENT)
-    fun deleteNote(@PathVariable id: String): ResponseEntity<Unit> {
-        return ResponseEntity.ok(noteService.deleteNote(id)) // 🔑 String id
+    fun deleteNote(
+        @PathVariable id: String,
+        @RequestParam userId: String // 🎯 Hier fangen wir die userId ab!
+    ): ResponseEntity<Unit> {
+        noteService.deleteNote(id, userId) // 🔑 Und reichen sie sauber weiter
+        return ResponseEntity.noContent().build()
     }
 }

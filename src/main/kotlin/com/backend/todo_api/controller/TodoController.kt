@@ -1,6 +1,7 @@
 package com.backend.todo_api.controller
 
 import com.backend.todo_api.dto.CreateTodoDto
+import com.backend.todo_api.dto.QuickPanelMode
 import com.backend.todo_api.dto.SyncResultDto
 import com.backend.todo_api.dto.TodoDto
 import com.backend.todo_api.dto.TodoUpdateResponse
@@ -61,37 +62,26 @@ class TodoController(private val todoService: TodoService) {
         return ResponseEntity.ok(result)
     }
 
-    @DeleteMapping("/completed")
-    @Operation(summary = "Erledigte Aufgaben eines Users löschen", description = "Löscht alle abgeschlossenen To-Dos NUR für diesen User.")
+    @PostMapping("/completed") // 🌟 Geändert zu PostMapping
+    @Operation(summary = "Erledigte private Aufgaben eines Users löschen (wird archiviert)")
     fun deleteCompleted(@RequestParam userId: String?): ResponseEntity<Map<String, String>> {
         if (userId.isNullOrBlank()) {
             return ResponseEntity.badRequest().build()
         }
-        val count = todoService.deleteCompleted(userId)
-        return ResponseEntity.ok(mapOf("message" to "$count erledigte Aufgaben gelöscht."))
+        // 🌟 Ruft jetzt die neue, sichere Service-Methode auf!
+        todoService.deleteCompletedPrivateTodos(userId)
+        return ResponseEntity.ok(mapOf("message" to "Erledigte private Aufgaben gelöscht."))
     }
 
-    @PostMapping("/delete-bulk")
-    @Operation(summary = "Aufgaben löschen", description = "Löscht alle abgeschlossenen To-Dos NUR für diesen User.")
-    fun deleteBulk(ids: List<String>): ResponseEntity<Void> {
-        todoService.deleteBulk(ids)
-        return ResponseEntity.noContent().build()
-    }
-
-
-    @DeleteMapping("/all")
-    @Operation(summary = "Alle Aufgaben eines Users löschen", description = "Löscht das komplette Board eines spezifischen Users.")
+    @PostMapping("/all") // 🌟 Geändert zu PostMapping
+    @Operation(summary = "Alle privaten Aufgaben eines Users löschen (wird archiviert)")
     fun deleteAll(@RequestParam userId: String?): ResponseEntity<Map<String, String>> {
-        println("--------------------------------------------------")
-        println("--> JETZT KOMMT WAS AN BEI /all!") // 🌟 Text korrigiert
-        println("--> Übergebene userId ist: $userId")
-        println("--------------------------------------------------")
-
         if (userId.isNullOrBlank()) {
             return ResponseEntity.badRequest().build()
         }
-        val count = todoService.deleteAll(userId)
-        return ResponseEntity.ok(mapOf("message" to "Alle $count Aufgaben gelöscht."))
+        // 🌟 Ruft jetzt die neue, sichere Service-Methode auf!
+        todoService.deleteAllPrivateTodos(userId)
+        return ResponseEntity.ok(mapOf("message" to "Alle privaten Aufgaben gelöscht."))
     }
 
     @DeleteMapping("/{id}")
@@ -125,5 +115,31 @@ class TodoController(private val todoService: TodoService) {
     ): ResponseEntity<List<TodoDto>> {
         val todos = todoService.getTodosByMilestone(userId, milestoneId)
         return ResponseEntity.ok(todos)
+    }
+
+    /**
+     * 📋 Holt alle für den User relevanten Todos (inkl. Projekt- & Privat-Tickets)
+     * Schützt das Frontend vor Datenmüll durch das 30-Tage-Zeitfenster.
+     */
+    @GetMapping("/relevant")
+    fun getRelevantTodos(
+        @RequestParam userId: String,
+        @RequestParam(defaultValue = "30") daysLookback: Int
+    ): ResponseEntity<List<TodoDto>> {
+        val todos = todoService.getRelevantTodos(userId, daysLookback)
+        return ResponseEntity.ok(todos)
+    }
+
+    /**
+     * 🧠 Der KI-Endpunkt für dein QuickPanel!
+     * Liefert eine saubere Liste der 6 am häufigsten genutzten Core-Tasks.
+     */
+    @GetMapping("/quick-predictions")
+    fun getQuickPanelPredictions(
+        @RequestParam modus: QuickPanelMode
+    ): ResponseEntity<List<String>> {
+        // Ruft deine intelligente Methode auf, die AiTextUtil nutzt!
+        val predictions = todoService.getIntelligentQuickTodos(modus)
+        return ResponseEntity.ok(predictions)
     }
 }

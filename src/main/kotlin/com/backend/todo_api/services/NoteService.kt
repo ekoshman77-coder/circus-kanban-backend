@@ -34,24 +34,37 @@ class NoteService(private val noteRepository: NoteRepository,
         return entity.toDto()
     }
 
-    // 1. Nur noch die Zettel des EINEN Users holen
+
+    // 1. GET: Nur noch aktive Notizen (Frontend-Sicht)
     fun getNotesByUserId(userId: String?): List<NoteDto> {
-        if (userId != null) {
-            validateUserExists(userId, userRepository)
-            return noteRepository.findByUserId(userId).map { it.toDto() }
-        } else {
-            return noteRepository.findAll().map { it.toDto() }
-        }
+        if (userId == null) return emptyList()
+        validateUserExists(userId, userRepository)
+
+        // 🎯 Hier nutzen wir jetzt deine neue Repository-Methode
+        return getAllActiveNotes()
+    }
+
+    /**
+     * Holt ALLE aktiven Ideen des gesamten Teams (für die gemeinsame Kreativ-Basis)
+     */
+    fun getAllActiveNotes(): List<NoteDto> {
+        return noteRepository.findByIsArchivedFalse().map { it.toDto() }
     }
 
     // 3. Zettel editieren (Sicherheitshalber prüfen wir hier auch die userId!)
     @Transactional
     fun updateNote(id: String, dto: NoteDto): NoteDto {
         validateUserExists(dto.userId, userRepository)
+
         val existingEntity = noteRepository.findById(id)
             .orElseThrow { IllegalArgumentException("Zettel mit ID $id nicht gefunden!") }
 
-        // Kleine Schutzmauer: Ein User darf nicht die Zettel eines anderen manipulieren
+        // 🎯 SCHUTZ: Archivierte Ideen dürfen nicht mehr bearbeitet werden
+        if (existingEntity.isArchived) {
+            throw IllegalStateException("Diese Idee ist archiviert und kann nicht mehr geändert werden.")
+        }
+
+        // Berechtigungsprüfung
         if (existingEntity.userId != dto.userId) {
             throw IllegalAccessException("Keine Berechtigung für diesen Zettel!")
         }
@@ -61,11 +74,17 @@ class NoteService(private val noteRepository: NoteRepository,
     }
 
     @Transactional
-    fun deleteNote(id: String) {
-        if (!noteRepository.existsById(id)) {
-            throw IllegalArgumentException("Zettel mit ID $id existiert nicht!")
+    fun deleteNote(id: String, userId: String) { // 🎯 userId kommt jetzt mit!
+        val entity = noteRepository.findById(id)
+            .orElseThrow { IllegalArgumentException("Zettel nicht gefunden!") }
+
+        // KONSEQUENZ: Wir schützen das Archiv genau wie das Update!
+        if (entity.userId != userId) {
+            throw IllegalAccessException("Nur der Eigentümer darf diese Idee archivieren!")
         }
-        noteRepository.deleteById(id)
+
+        entity.isArchived = true
+        noteRepository.save(entity)
     }
 
     fun getGlobalTrainingPairs(): List<Pair<String, String>> {

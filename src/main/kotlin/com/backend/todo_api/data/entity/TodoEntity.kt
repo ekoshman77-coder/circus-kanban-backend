@@ -37,4 +37,7 @@ class TodoEntity(
 
     @Column(name = "team_status", nullable = false)
     var teamStatus: String = "BACKLOG",
+
+    @Column(name = "is_archived", nullable = false)
+    var isArchived: Boolean = false
 )

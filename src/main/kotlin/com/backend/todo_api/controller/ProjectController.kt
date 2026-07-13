@@ -14,7 +14,8 @@ class ProjectController(private val projectService: ProjectService) {
 
     @GetMapping
     fun getProjects(@RequestParam(required = false) userId: String?): ResponseEntity<List<ProjectDto>> {
-        return ResponseEntity.ok(projectService.getProjectsByWithUser(userId))
+        val projects = projectService.getProjectsByWithUser(userId)
+        return ResponseEntity.ok(projects)
     }
 
     // 🔍 Endpunkt für die Einzelabfrage eines Projekts
@@ -25,7 +26,9 @@ class ProjectController(private val projectService: ProjectService) {
 
     @PostMapping
     fun createProject(@RequestBody dto: CreateProjectDto): ResponseEntity<ProjectDto> {
-        return ResponseEntity.status(HttpStatus.CREATED).body(projectService.createProject(dto))
+        val project = projectService.createProject(dto)
+        println("project was created")
+        return ResponseEntity.status(HttpStatus.CREATED).body(project)
     }
 
     @PutMapping("/{id}")

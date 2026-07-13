@@ -1,10 +1,13 @@
 package com.backend.todo_api.services
 
 import com.backend.todo_api.data.entity.TodoEntity
+import com.backend.todo_api.data.repository.MilestoneRepository
+import com.backend.todo_api.data.repository.ProjectMemberRepository
 import com.backend.todo_api.data.repository.TodoRepository
 import com.backend.todo_api.data.repository.UserRepository
 import com.backend.todo_api.dto.CreateTodoDto
 import com.backend.todo_api.dto.GamificationResult
+import com.backend.todo_api.dto.QuickPanelMode
 import com.backend.todo_api.dto.SyncResultDto
 import com.backend.todo_api.dto.TodoDto
 import com.backend.todo_api.dto.TodoUpdateResponse
@@ -15,6 +18,7 @@ import com.backend.todo_api.exceptions.TodoNotFoundException
 import com.backend.todo_api.model.AiContextType
 import com.backend.todo_api.model.FocusType
 import com.backend.todo_api.providers.AiGlobalDataProvider
+import com.backend.todo_api.utils.AiTextUtil
 import org.springframework.stereotype.Service
 import org.springframework.data.repository.findByIdOrNull
 import com.backend.todo_api.validation.*
@@ -26,18 +30,52 @@ class TodoService (
     private val todoRepository: TodoRepository,
     private val userRepository: UserRepository,
     private val gamificationService: GamificationService,
-    private val milestoneService: MilestoneService
+    private val milestoneService: MilestoneService,
+    private val milestoneRepository: MilestoneRepository,
+    private val  projectMemberRepository: ProjectMemberRepository,
 ) {
 
+    fun getArchiveStats(): String {
+        val totalCount = todoRepository.count()
+        val archivedCount = todoRepository.findAll().count { it.isArchived }
+        return "KI-Archiv-Status: $archivedCount archivierte Todos von insgesamt $totalCount Datensätzen sind für die KI bereit."
+    }
+
+    // 1. GET (Frontend-Sicht): Nutzt deine neue, effiziente DB-Methode
     fun getTodos(userId: String?): List<TodoDto> {
         if (userId != null) {
             validateUserExists(userId, userRepository)
-            // 🔄 Vorher: map { mapToDto(it) } -> Jetzt nutzen wir die schicke Extension!
-            return todoRepository.findByUserId(userId).map { it.toDto() }
-        } else {
-            return todoRepository.findAll().map { it.toDto() }
+            // 🎯 Hier nutzen wir deine neue Repository-Methode!
+            return todoRepository.findByUserIdAndIsArchivedFalse(userId)
+                .map { it.toDto() }
         }
+        return todoRepository.findByIsArchivedFalse()
+    }
 
+    /**
+     * 📋 Holt alle für den User relevanten To-Dos (inkl. Projekt- & Privat-Tickets).
+     * Validiert zuerst den User, um verwaiste Sessions sofort zu kicken.
+     */
+    fun getRelevantTodos(userId: String, daysLookback: Int = 30): List<TodoDto> {
+        // 🛡️ SICHERHEITS-CHECK: Existiert der User noch in der Datenbank?
+        validateUserExists(userId, userRepository)
+
+        // 1. Zeitstempel für das Ausblenden alter, erledigter Aufgaben berechnen
+        val cutoffDate = System.currentTimeMillis() - (daysLookback.toLong() * 24 * 60 * 60 * 1000)
+
+        // 2. Hochperformanter Datenbank-Aufruf über unsere gemeinsame Team-Query
+        val relevantEntities = todoRepository.findRelevantTodosForUser(userId, cutoffDate)
+
+        // 3. Konvertieren in DTOs und ab ans Frontend
+        return relevantEntities.map { it.toDto() }
+    }
+
+    // 2. GET BY ID (Frontend-Sicht): Nutzt deine neue, effiziente DB-Methode
+    fun getTodoById(id: String): TodoDto {
+        // 🎯 Hier nutzen wir ebenfalls deine neue Methode
+        val todo = todoRepository.findByIdAndIsArchivedFalse(id)
+            ?: throw TodoNotFoundException("Todo nicht gefunden oder archiviert")
+        return todo.toDto()
     }
 
     fun createTodo(dto: CreateTodoDto): TodoDto {
@@ -63,7 +101,7 @@ class TodoService (
         validateUserExists(dto.userId, userRepository)
 
         // 1. Wir holen uns den AKTUELLEN Zustand aus der DB anhand der ID aus dem DTO
-        val oldTodo = todoRepository.findByIdOrNull(dto.id)
+        val oldTodo = todoRepository.findByIdAndIsArchivedFalse(dto.id)
             ?: throw TodoNotFoundException("To-Do mit ID ${dto.id} nicht gefunden")
 
         // Wir merken uns die alten Werte für unseren MilestoneService
@@ -115,51 +153,52 @@ class TodoService (
         )
     }
 
-    fun deleteCompleted(userId: String): Int {
+    /**
+     * 🗑️ Erledigte private Aufgaben des Users gesammelt löschen (wird archiviert).
+     * Filtert in der Query Projekt-Aufgaben (mit milestoneId) automatisch heraus.
+     */
+    fun deleteCompletedPrivateTodos(userId: String) {
+        // 🛡️ SICHERHEITS-CHECK: Frontend kickt den User, wenn er aus der DB gelöscht wurde
         validateUserExists(userId, userRepository)
-        return todoRepository.deleteByDoneTrueAndUserId(userId)
+
+        // Nutzt die sichere Update-Query aus dem Repository
+        todoRepository.archiveCompletedPrivateTodos(userId)
     }
 
-    fun deleteBulk(ids: List<String>) {
-        todoRepository.deleteAllById(ids)
-    }
-
-    fun deleteAll(userId: String): Int {
+    /**
+     * 🗑️ Alle privaten Aufgaben des Users gesammelt löschen (wird archiviert).
+     * Filtert in der Query Projekt-Aufgaben (mit milestoneId) automatisch heraus.
+     */
+    fun deleteAllPrivateTodos(userId: String) {
+        // 🛡️ SICHERHEITS-CHECK: Frontend kickt den User, wenn er aus der DB gelöscht wurde
         validateUserExists(userId, userRepository)
-        return todoRepository.deleteByUserId(userId)
+
+        // Nutzt die sichere Update-Query aus dem Repository
+        todoRepository.archiveAllPrivateTodos(userId)
     }
 
+    /**
+     * 🗑️ Einzelne Aufgabe über den Mülleimer löschen (wird im Hintergrund archiviert).
+     * Wenn das Todo nicht existiert (updatedRows == 0), fliegt eine Exception,
+     * damit das Frontend über den Datenkonflikt informiert wird!
+     */
     fun deleteTodoById(id: String) {
-        // 1. Wir holen uns das To-Do aus der Datenbank, BEVOR wir es löschen
-        val todo = todoRepository.findByIdOrNull(id)
-
-        // 2. MILESTONE-UPDATE: Wenn die Aufgabe erledigt war und zu einem Meilenstein gehörte,
-        // müssen wir die Punkte jetzt rückwirkend wieder abziehen!
-        if (todo != null && todo.done && !todo.milestoneId.isNullOrBlank()) {
-            milestoneService.recalculateMilestoneProgress(
-                milestoneId = todo.milestoneId,
-                effort = todo.effort,
-                usedEffort = todo.usedEffort,
-                isDone = false // 'false' signalisiert dem Service, dass abgezogen werden soll!
-            )
+        val updatedRows = todoRepository.archiveById(id)
+        if (updatedRows == 0) {
+            throw TodoNotFoundException("todo not found")
         }
-
-        // 3. Jetzt löschen wir das To-Do endgültig aus der Datenbank
-        todoRepository.deleteById(id)
     }
 
+    // 3. STATUS UPDATE (Sicherheit erhöhen)
     fun updateStatus(id: String, done: Boolean, userId: String): TodoDto {
         validateUserExists(userId, userRepository)
-        var todo = todoRepository.findByIdOrNull(id)
-            ?: throw TodoNotFoundException("Todo not found")
-        println("todo. done = " + todo.done)
-        println("done = " + done)
-//        if (todo.done == done) {
-//            throw InvalidStatusRequestException("todo had status ${if (done) "closed" else "open"}")
-//        }
+
+        // 🎯 Nur noch aktive Todos können ihren Status ändern
+        val todo = todoRepository.findByIdAndIsArchivedFalse(id)
+            ?: throw TodoNotFoundException("Todo nicht gefunden oder archiviert")
+
         todo.done = done
-        val dto = todoRepository.save(todo).toDto()
-        return dto
+        return todoRepository.save(todo).toDto()
     }
 
     @org.springframework.transaction.annotation.Transactional
@@ -264,6 +303,43 @@ class TodoService (
             text to focus
         }
     }
+
+    fun getQuickTodoTrainingPairs(): List<Pair<String, String>> {
+        // Hole alle aktiven Todos, die wenig Aufwand benötigen (effort < 3)
+        return todoRepository.findAll()
+            .filter { it.effort < 3 }
+            .map { it.task to (it.category ?: "Sonstiges") }
+    }
+
+    fun getIntelligentQuickTodos(modus: QuickPanelMode): List<String> {
+        // 1. Alle Todos holen (wir schauen in die gesamte Historie)
+        val allTodos = todoRepository.findAll()
+        val isPause = (modus == QuickPanelMode.PAUSE)
+
+        // 2. Filtern nach Modus (Effort 0 für Pause, >0 für Aktiv)
+        // 3. Gruppieren nach dem "Bedeutungskern" mittels AiTextUtil
+        return allTodos
+            .filter { (it.effort == 0) == isPause }
+            .groupBy { getMeaningfulCore(it.task) }
+            .entries
+            .filter { it.key.isNotEmpty() } // Nur Gruppen mit echtem Inhalt
+            .sortedByDescending { it.value.size } // Die häufigsten Themen gewinnen
+            .take(6)
+            .map { group ->
+                // Wir nehmen den Namen des letzten Todos aus dieser Gruppe,
+                // damit der Vorschlag aktuell bleibt.
+                group.value.last().task
+            }
+    }
+
+    private fun getMeaningfulCore(task: String): String {
+        // 🧠 Nutzung der zentralen Utility!
+        val tokens = AiTextUtil.tokenizeAndClean(task)
+
+        // Wir nehmen das erste relevante Wort als "Kern-Kategorie" (z.B. "Refactoring")
+        // Falls das Todo nur aus einem Wort besteht, nehmen wir das.
+        return tokens.firstOrNull() ?: ""
+    }
 }
 
 // =============================================================================
@@ -288,5 +364,12 @@ class TodoAiProviderConfig(private val todoService: TodoService) {
     fun todoEffortProvider() = object : AiGlobalDataProvider<Int> {
         override fun getContextType() = AiContextType.TODO_EFFORT
         override fun getGlobalTrainingPairs() = todoService.getEffortTrainingPairs()
+    }
+
+    @Bean
+    fun quickTodoProvider() = object : AiGlobalDataProvider<String> {
+        override fun getContextType() = AiContextType.QUICK_TODO_CATEGORY
+        // Hier ziehen wir nur die Aufgaben, die "schnell" waren (z.B. wenig effort)
+        override fun getGlobalTrainingPairs() = todoService.getQuickTodoTrainingPairs()
     }
 }

@@ -26,9 +26,11 @@ class UserEntity(
     var xp: Int = 0,
 
     @Column(name = "level", nullable = false)
-    var level: Int = 1,
+    var level: Int = 0,
+
+    @Column(name = "level_title", nullable = false)
+    var levelTitle: String = "",
 
     @OneToMany(mappedBy = "user", cascade = [CascadeType.ALL], orphanRemoval = true)
     var projectMemberships: MutableList<ProjectMemberEntity> = mutableListOf()
-
 )
