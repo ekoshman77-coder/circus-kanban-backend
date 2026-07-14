@@ -27,7 +27,8 @@ fun CreateTodoDto.toEntityWithoutId() = TodoEntity(
     milestoneId = this.milestoneId,
     assignedUserId = this.assignedUserId,
     isStarted = this.isStarted,
-    teamStatus = this.teamStatus
+    teamStatus = this.teamStatus,
+    lastDeveloperId = this.lastDeveloperId
 )
 
 // 🚀 2. REUSE DURCH VERERBUNG: Extension für POST (Neuerstellung)
@@ -63,7 +64,8 @@ fun TodoEntity.toDto() = TodoDto(
     milestoneId = this.milestoneId,
     assignedUserId = this.assignedUserId,
     isStarted = this.isStarted,
-    teamStatus = this.teamStatus
+    teamStatus = this.teamStatus,
+    lastDeveloperId = this.lastDeveloperId
 )
 
 fun PlannerSettingsEntity.toDto() = PlannerSettingsDto(

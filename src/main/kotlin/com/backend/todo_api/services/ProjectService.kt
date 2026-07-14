@@ -6,6 +6,7 @@ import com.backend.todo_api.data.repository.ProjectMemberRepository
 import com.backend.todo_api.data.repository.ProjectRepository
 import com.backend.todo_api.data.repository.UserRepository
 import com.backend.todo_api.dto.CreateProjectDto
+import com.backend.todo_api.dto.ProjectDashboardStatsDTO
 import com.backend.todo_api.dto.ProjectDto
 import jakarta.transaction.Transactional
 import org.springframework.stereotype.Service
@@ -116,5 +117,18 @@ class ProjectService(
         }
 
         return projectEntity
+    }
+
+    @Transactional
+    fun getDashboardStatistics(userId: String): ProjectDashboardStatsDTO {
+        // 1. Das Interface von Spring Data JPA holen
+        val projection = projectRepository.getDashboardStatistics(userId)
+
+        // 2. Auslesen über die Properties und ins saubere DTO mappen
+        return ProjectDashboardStatsDTO(
+            totalProjects = projection.getTotalProjects(),
+            totalMilestones = projection.getTotalMilestones(),
+            totalTodos = projection.getTotalTodos()
+        )
     }
 }

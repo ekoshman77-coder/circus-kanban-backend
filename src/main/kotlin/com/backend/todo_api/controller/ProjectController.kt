@@ -1,6 +1,7 @@
 package com.backend.todo_api.controller
 
 import com.backend.todo_api.dto.CreateProjectDto
+import com.backend.todo_api.dto.ProjectDashboardStatsDTO
 import com.backend.todo_api.dto.ProjectDto
 import com.backend.todo_api.services.ProjectService
 import org.springframework.http.HttpStatus
@@ -40,5 +41,11 @@ class ProjectController(private val projectService: ProjectService) {
     fun deleteProject(@PathVariable id: String): ResponseEntity<Void> {
         projectService.deleteProject(id)
         return ResponseEntity.noContent().build()
+    }
+
+    @GetMapping("/statistics/{userId}")
+    fun getDashboardStatistics(@PathVariable userId: String): ResponseEntity<ProjectDashboardStatsDTO> {
+        val stats = projectService.getDashboardStatistics(userId)
+        return ResponseEntity.ok(stats)
     }
 }
