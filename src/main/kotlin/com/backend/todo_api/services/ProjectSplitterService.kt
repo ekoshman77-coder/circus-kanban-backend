@@ -6,6 +6,7 @@ import com.backend.todo_api.dto.MilestoneSuggestionDto
 import com.backend.todo_api.dto.MilestoneSuggestionsResponse
 import com.backend.todo_api.model.MilestonePointsKnowledge
 import com.backend.todo_api.utils.AiTextUtil
+import jakarta.transaction.Transactional
 import org.springframework.stereotype.Service
 
 
@@ -110,6 +111,7 @@ class ProjectSplitterService(
     /**
      * LERN-FUNKTION 1: Erfolg verbuchen
      */
+    @Transactional
     fun trackMilestoneSelection(projectTitle: String, milestoneTitle: String, userId: String) {
         val tokens = AiTextUtil.tokenizeAndClean(projectTitle)
 
@@ -136,6 +138,7 @@ class ProjectSplitterService(
     /**
      * LERN-FUNKTION 2: Vorschlag ablehnen (Strafbank)
      */
+    @Transactional
     fun trackMilestoneDegradation(projectTitle: String, milestoneTitle: String, userId: String) {
         val tokens = AiTextUtil.tokenizeAndClean(projectTitle)
 

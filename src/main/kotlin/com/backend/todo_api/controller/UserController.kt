@@ -76,4 +76,24 @@ class UserController(private val userService: UserService) {
             ResponseEntity.status(HttpStatus.NOT_FOUND).body(mapOf("error" to e.message))
         }
     }
+
+    @DeleteMapping("/{id}")
+    @Operation(summary = "Benutzer global löschen", description = "Löscht den Benutzer global aus dem System und bereinigt alle Abhängigkeiten (Todos, Meilensteine, Projekte).")
+    @ApiResponses(value = [
+        ApiResponse(responseCode = "204", description = "Benutzer erfolgreich gelöscht"),
+        ApiResponse(responseCode = "404", description = "Benutzer-ID nicht gefunden")
+    ])
+    fun deleteUser(@PathVariable id: String): ResponseEntity<Any> {
+        return try {
+            println("🗑️ [Backend-Controller] DELETE-Request erhalten für User-ID: $id")
+
+            // 🚀 Ruft die fleißige Methode im Service auf
+            userService.deleteUser(id)
+
+            // 204 No Content ist perfekt für erfolgreiche Löschanfragen
+            ResponseEntity.noContent().build()
+        } catch (e: UserNotFoundException) {
+            ResponseEntity.status(HttpStatus.NOT_FOUND).body(mapOf("error" to e.message))
+        }
+    }
 }
