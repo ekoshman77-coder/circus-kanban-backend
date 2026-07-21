@@ -132,11 +132,13 @@ class GamificationService(
         }
 
         val title = generateDynamicKiTitle(userId, user.level)
+        val (cleanTitle, icon) = extractTitleAndIcon(title)
 
         return GamificationResult(
             levelUp = false,
             currentLevel = user.level,
-            levelTitle = title,
+            levelTitle = cleanTitle,
+            levelIcon = icon,
             currentXp = user.xp,
             currentLevelXpStart = getXpRequiredForLevel(user.level),
             nextLevelXpRequired = getXpRequiredForLevel(user.level + 1)
@@ -185,15 +187,35 @@ class GamificationService(
         // 4. In der Datenbank speichern
         userRepository.save(user)
 
+        val (cleanTitle, icon) = extractTitleAndIcon(user.levelTitle)
+
         // 5. Ergebnis für das Frontend aufbereiten
         return GamificationResult(
             levelUp = isLevelUp,
             currentLevel = user.level,
             // Wenn das Feld in der DB leer ist (weil Level 0), zeigen wir den schönen Platzhalter
-            levelTitle = user.levelTitle.ifEmpty { "Unbeschriebenes Blatt 📝" },
+            levelTitle = cleanTitle,
+            levelIcon = icon,
             currentXp = user.xp,
             currentLevelXpStart = getXpRequiredForLevel(user.level),
             nextLevelXpRequired = getXpRequiredForLevel(user.level + 1)
         )
+    }
+
+    private fun extractTitleAndIcon(fullTitleFromDb: String): Pair<String, String> {
+        if (fullTitleFromDb.isEmpty() || fullTitleFromDb == "Unbeschriebenes Blatt 📝") {
+            return Pair("Unbeschriebenes Blatt", "📝")
+        }
+
+        // Wir suchen das letzte Leerzeichen vor dem Emoji
+        val lastSpaceIndex = fullTitleFromDb.lastIndexOf(' ')
+        if (lastSpaceIndex == -1) {
+            return Pair(fullTitleFromDb, "")
+        }
+
+        val title = fullTitleFromDb.substring(0, lastSpaceIndex).trim()
+        val icon = fullTitleFromDb.substring(lastSpaceIndex + 1).trim()
+
+        return Pair(title, icon)
     }
 }
