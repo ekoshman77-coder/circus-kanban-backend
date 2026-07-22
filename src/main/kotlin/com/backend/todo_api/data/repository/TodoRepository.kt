@@ -1,7 +1,6 @@
 package com.backend.todo_api.data.repository
 
 import com.backend.todo_api.data.entity.TodoEntity
-import com.backend.todo_api.dto.TodoDto
 import jakarta.transaction.Transactional
 import org.springframework.data.jpa.repository.JpaRepository
 import org.springframework.data.jpa.repository.Modifying
@@ -59,7 +58,7 @@ interface TodoRepository : JpaRepository<TodoEntity, String> {
     @Modifying
     @Query("UPDATE TodoEntity t SET t.isArchived = true WHERE t.done = true AND t.userId = :userId")
     fun archiveCompletedByUserId(@Param("userId") userId: String): Int
-    fun findByIsArchivedFalse(): List<TodoDto>
+    fun findByIsArchivedFalse(): List<TodoEntity>
 
     //         -- BLOCK 1: Meine privaten, persönlichen Aufgaben
     //        -- BLOCK 2: ALLE Aufgaben aus Projekten, bei denen ich im Team bin
@@ -116,4 +115,16 @@ interface TodoRepository : JpaRepository<TodoEntity, String> {
           AND (t.milestoneId IS NULL OR t.milestoneId = '')
     """)
     fun archiveAllPrivateTodos(@Param("userId") userId: String): Int
+
+    @Query("""
+    SELECT t FROM TodoEntity t 
+    WHERE t.isArchived = false 
+      AND t.done = false
+      AND (
+         (t.userId = :userId AND (t.milestoneId IS NULL OR t.milestoneId = ''))       
+        OR
+        (t.milestoneId IS NOT NULL AND t.milestoneId <> '' AND t.assignedUserId = :userId)
+      )
+""")
+    fun findActivePlannerTodosForUser(@Param("userId") userId: String): List<TodoEntity>
 }

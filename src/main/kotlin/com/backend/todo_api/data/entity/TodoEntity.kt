@@ -42,5 +42,8 @@ class TodoEntity(
     var isArchived: Boolean = false,
 
     @Column(name = "last_developer_id")
-    var lastDeveloperId: String? = null
+    var lastDeveloperId: String? = null,
+
+    @Column(name = "cooldown_turns", nullable = false)
+    var cooldownTurns: Int = 0 // 🌬️ Der Atem-Pausen-Zähler!
 )

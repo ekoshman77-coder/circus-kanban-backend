@@ -34,6 +34,75 @@ class TodoService (
     private val milestoneRepository: MilestoneRepository,
     private val  projectMemberRepository: ProjectMemberRepository,
 ) {
+    // 1. NEUERSTELLUNG: Wandelt CreateTodoDto in eine neue Entity um und initialisiert versteckte Felder
+    private fun mapToNewEntity(dto: CreateTodoDto): TodoEntity {
+        return TodoEntity(
+            id = java.util.UUID.randomUUID().toString(),
+            task = dto.task,
+            description = dto.description,
+            done = dto.done,
+            effort = dto.effort,
+            usedEffort = dto.usedEffort,
+            dueDate = dto.dueDate,
+            completedAt = dto.completedAt,
+            createdAt = if (dto.createdAt == 0L) System.currentTimeMillis() else dto.createdAt,
+            userId = dto.userId,
+            category = dto.category,
+            milestoneId = dto.milestoneId,
+            assignedUserId = dto.assignedUserId,
+            isStarted = dto.isStarted,
+            teamStatus = dto.teamStatus,
+            lastDeveloperId = dto.lastDeveloperId,
+
+            // 🔮 UNSERE VERSTECKTEN KI-/GAMIFICATION-FELDER (Sicher initialisiert!)
+            effortChangesCount = 0,
+            cooldownTurns = 0,
+            focusType = "LOW_FOCUS" // Oder was dein Standard-Typ für neue Todos ist
+        )
+    }
+
+    // 2. UPDATE: Überträgt NUR Frontend-Felder auf eine bereits existierende DB-Entity
+    private fun mergeDtoIntoEntity(dto: TodoDto, existingEntity: TodoEntity): TodoEntity {
+        existingEntity.task = dto.task
+        existingEntity.description = dto.description
+        existingEntity.done = dto.done
+        existingEntity.effort = dto.effort
+        existingEntity.usedEffort = dto.usedEffort
+        existingEntity.dueDate = dto.dueDate
+        existingEntity.completedAt = dto.completedAt
+        existingEntity.category = dto.category
+        existingEntity.milestoneId = dto.milestoneId
+        existingEntity.assignedUserId = dto.assignedUserId
+        existingEntity.isStarted = dto.isStarted
+        existingEntity.teamStatus = dto.teamStatus
+        existingEntity.lastDeveloperId = dto.lastDeveloperId
+
+        // 🛡️ HIER PASSIERT NICHTS: cooldownTurns und focusType bleiben auf existingEntity unberührt!
+        return existingEntity
+    }
+
+    // 3. ANTWORT: Wandelt eine DB-Entity in ein fressbares DTO fürs Frontend um
+    fun mapToDto(entity: TodoEntity): TodoDto {
+        return TodoDto(
+            id = entity.id ?: "",
+            task = entity.task,
+            description = entity.description,
+            done = entity.done,
+            effort = entity.effort,
+            usedEffort = entity.usedEffort,
+            dueDate = entity.dueDate,
+            completedAt = entity.completedAt,
+            createdAt = entity.createdAt,
+            userId = entity.userId,
+            category = entity.category,
+            effortChangesCount = entity.effortChangesCount,
+            milestoneId = entity.milestoneId,
+            assignedUserId = entity.assignedUserId,
+            isStarted = entity.isStarted,
+            teamStatus = entity.teamStatus,
+            lastDeveloperId = entity.lastDeveloperId
+        )
+    }
 
     fun getArchiveStats(): String {
         val totalCount = todoRepository.count()
@@ -47,9 +116,9 @@ class TodoService (
             validateUserExists(userId, userRepository)
             // 🎯 Hier nutzen wir deine neue Repository-Methode!
             return todoRepository.findByUserIdAndIsArchivedFalse(userId)
-                .map { it.toDto() }
+                .map { mapToDto(it) }
         }
-        return todoRepository.findByIsArchivedFalse()
+        return todoRepository.findByIsArchivedFalse().map { mapToDto(it) }
     }
 
     /**
@@ -67,7 +136,7 @@ class TodoService (
         val relevantEntities = todoRepository.findRelevantTodosForUser(userId, cutoffDate)
 
         // 3. Konvertieren in DTOs und ab ans Frontend
-        return relevantEntities.map { it.toDto() }
+        return relevantEntities.map { mapToDto(it) }
     }
 
     // 2. GET BY ID (Frontend-Sicht): Nutzt deine neue, effiziente DB-Methode
@@ -75,14 +144,14 @@ class TodoService (
         // 🎯 Hier nutzen wir ebenfalls deine neue Methode
         val todo = todoRepository.findByIdAndIsArchivedFalse(id)
             ?: throw TodoNotFoundException("Todo nicht gefunden oder archiviert")
-        return todo.toDto()
+        return mapToDto(todo)
     }
 
     fun createTodo(dto: CreateTodoDto): TodoDto {
         validateUserExists(dto.userId, userRepository)
 
         // 🚀 Vererbung & Extension im Einsatz: Setzt autom. usedEffort & Zeitstempel, falls nötig!
-        val entity = dto.toNewEntity()
+        val entity = mapToNewEntity(dto)
         val savedEntity = todoRepository.save(entity)
 
         if (dto.done && dto.milestoneId != null) {
@@ -94,37 +163,40 @@ class TodoService (
             )
         }
 
-        return savedEntity.toDto()
+        return mapToDto(savedEntity)
     }
 
     fun updateTodo(dto: TodoDto): TodoUpdateResponse {
         validateUserExists(dto.userId, userRepository)
 
-        // 1. Wir holen uns den AKTUELLEN Zustand aus der DB anhand der ID aus dem DTO
+        // 1. Aktuellen Zustand inklusive ALLER versteckten KI-Felder aus der DB holen
         val oldTodo = todoRepository.findByIdAndIsArchivedFalse(dto.id)
             ?: throw TodoNotFoundException("To-Do mit ID ${dto.id} nicht gefunden")
 
-        // Wir merken uns die alten Werte für unseren MilestoneService
+        // Werte für den MilestoneService sichern, bevor wir das Objekt modifizieren
         val oldMilestoneId = oldTodo.milestoneId
         val oldEffort = oldTodo.effort
         val oldDone = oldTodo.done
 
-        // 2. Jetzt nutzen wir unser sauberes Mapping OHNE Parameter!
-        val updatedEntity = dto.toEntity()
+        // 🧠 KI-LOGIK RETTEN: Zähler hochschrauben, wenn sich der Aufwand im Frontend geändert hat
+        if (oldTodo.effort != dto.effort) {
+            oldTodo.effortChangesCount += 1
+        }
 
-        // 3. MILESTONE-BERECHNUNG:
+        // 🔄 SICHERES MERGE: Wir übertragen NUR die Frontend-Felder auf unsere geladene DB-Entity
+        val updatedEntity = mergeDtoIntoEntity(dto, oldTodo)
 
-        // Fall A: War es vorher erledigt? Dann alten Aufwand abziehen.
+        // 2. MILESTONE-BERECHNUNG: Fall A (War es vorher fertig? Aufwand abziehen)
         if (oldDone && !oldMilestoneId.isNullOrBlank()) {
             milestoneService.recalculateMilestoneProgress(
                 milestoneId = oldMilestoneId,
                 effort = oldEffort,
-                usedEffort = oldTodo.usedEffort,
-                isDone = false // false zieht ab!
+                usedEffort = updatedEntity.usedEffort,
+                isDone = false
             )
         }
 
-        // Jetzt speichern wir die aktualisierte Entity ab
+        // Jetzt speichern wir die modifizierte Entity ab (cooldownTurns und focusType sind absolut sicher!)
         val savedEntity = todoRepository.save(updatedEntity)
 
         // Fall B: Ist es JETZT erledigt? Dann neuen Aufwand auf den Meilenstein rechnen.
@@ -133,12 +205,12 @@ class TodoService (
                 milestoneId = savedEntity.milestoneId,
                 effort = savedEntity.effort,
                 usedEffort = savedEntity.usedEffort,
-                isDone = true // true addiert drauf!
+                isDone = true
             )
         }
 
+        // 3. Gamification-Logik triggern bei Statuswechsel
         var gamificationResult: GamificationResult? = null
-        // 4. Unsere bewährte Gamification-Logik triggern
         if (oldDone != savedEntity.done) {
             gamificationResult = gamificationService.processTodoStatusChange(
                 savedEntity.userId,
@@ -147,8 +219,10 @@ class TodoService (
                 isDone = savedEntity.done
             )
         }
+
+        // 4. Antwort via mapToDto sauber konvertieren
         return TodoUpdateResponse(
-            todo = savedEntity.toDto(),
+            todo = mapToDto(savedEntity),
             gamificationResult = gamificationResult
         )
     }
@@ -198,7 +272,8 @@ class TodoService (
             ?: throw TodoNotFoundException("Todo nicht gefunden oder archiviert")
 
         todo.done = done
-        return todoRepository.save(todo).toDto()
+        val saved = todoRepository.save(todo)
+        return mapToDto(saved)
     }
 
     @org.springframework.transaction.annotation.Transactional
@@ -216,14 +291,26 @@ class TodoService (
     }
 
     private fun updateEffortChange(oldTodo: TodoEntity, newTodo: TodoEntity): TodoEntity {
+        // 🧠 KI-LOGIK: Wenn sich der Aufwand geändert hat, Zähler basierend auf der DB hochzählen
         if (oldTodo.effort != newTodo.effort) {
-           newTodo.effortChangesCount = oldTodo.effortChangesCount + 1
+            newTodo.effortChangesCount = oldTodo.effortChangesCount + 1
+        } else {
+            // Falls er gleich blieb, Zählerstand aus der DB übernehmen (damit dort keine 0 überschrieben wird)
+            newTodo.effortChangesCount = oldTodo.effortChangesCount
         }
+
+        // 🔮 DIE RETTUNG DER VERSTECKTEN KI-FELDER:
+        // Wir impfen die neue Entity mit den unberührten Werten aus der DB
+        newTodo.focusType = oldTodo.focusType
+        newTodo.cooldownTurns = oldTodo.cooldownTurns
+        newTodo.isArchived = oldTodo.isArchived
+        newTodo.createdAt = oldTodo.createdAt // Auch das originale Erstellungsdatum bleibt so sicher!
+
         return newTodo
     }
 
     @org.springframework.transaction.annotation.Transactional
-    fun syncBulkTodos(userId: String, bulkDtos: List<TodoDto>): SyncResultDto { // 🌟 Rückgabetyp geändert!
+    fun syncBulkTodos(userId: String, bulkDtos: List<TodoDto>): SyncResultDto {
         validateUserExists(userId, userRepository)
 
         val oldTodos = todoRepository.findByUserId(userId).associateBy { it.id }
@@ -237,16 +324,22 @@ class TodoService (
                     toggleStatusWithGamification(dto.id, dto.done, userId)
                     isChanged = true
                 }
-                val entityToUpdate = dto.toEntity()
+
+                // 🛡️ SICHERER WEG: Wir nehmen eine Kopie der DB-Entity und mergen die DTO-Felder rein
+                val entityToUpdate = mergeDtoIntoEntity(dto, oldTodo)
+
+                // Nun übergeben wir die modifizierte Entity an updateEffortChange,
+                // wo die KI-Felder sicher verwaltet und zurückgegeben werden
                 todoRepository.save(updateEffortChange(oldTodo, entityToUpdate))
             } else {
+                // Neuerstellung bleibt wie gehabt, nutzt jetzt aber mapToNewEntity für korrekte Defaults
                 val newDto = CreateTodoDto(
                     task = dto.task,
                     description = dto.description,
                     effort = dto.effort,
                     userId = userId
                 )
-                val entity = newDto.toNewEntity().apply { this.id = dto.id; this.done = dto.done }
+                val entity = mapToNewEntity(newDto).apply { this.id = dto.id; this.done = dto.done }
                 todoRepository.save(entity)
 
                 if (dto.done) {
@@ -256,20 +349,14 @@ class TodoService (
             }
         }
 
-        // 🌟 JETZT HOLEN WIR DEN FINALE STATUS:
-        // Wir holen uns die frisch aktualisierte Liste...
         val aktuelleListe = getTodos(userId)
-        // ...und den aktuellen Gamification-Stand (inkl. aller soeben verbuchten XP!)
         val finalerGamificationStand = gamificationService.getGamificationState(userId)
 
-        // Wenn sich während des Syncs Levels oder Punkte geändert haben, können wir optional
-        // prüfen, ob ein "levelUp" stattgefunden hat, indem wir den alten Stand mit dem neuen vergleichen.
-        // Fürs Erste liefern wir den absolut exakten, aktuellen Zustand aus der DB.
         return SyncResultDto(
             liste = aktuelleListe,
             gamificationResult = finalerGamificationStand
         )
-    }
+      }
 
     /**
      * Reicht den Gamification-State einfach nur durch, damit der Controller
@@ -284,7 +371,7 @@ class TodoService (
         val entities = if (userId != null) todoRepository.findByUserIdAndMilestoneId(userId, milestoneId)
                         else todoRepository.findByMilestoneId(milestoneId)
 
-        return entities.map { it.toDto() }
+        return entities.map { mapToDto(it) }
     }
 
     fun getCategoryTrainingPairs(): List<Pair<String, String>> {

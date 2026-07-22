@@ -22,8 +22,14 @@ class SmartPlannerService(
     private val userRepository: UserRepository,
     private val plannerSettingsRepository: PlannerSettingsRepository, // ⚡ NEU: Hier kommen die Regler-Werte her!
     private val focusPredictorService: FocusPredictorService,
-    private val preferenceRepository: UserAiPreferenceRepository
+    private val preferenceRepository: UserAiPreferenceRepository,
+    private val todoService: TodoService
 ) {
+
+    companion object {
+        const val MAX_COOLDOWN_TURNS = 3
+    }
+
     private fun isUrgent(todo: TodoEntity): Boolean {
         if (todo.dueDate == null) return false
         val fortyEightHoursInMs = 48 * 60 * 60 * 1000
@@ -31,7 +37,9 @@ class SmartPlannerService(
     }
 
     @Transactional
-    fun processUserFeedback(userId: String, todoId: String, accepted: Boolean, rejectReason: String?, currentEnergy: String) {
+    fun processUserFeedback(
+        userId: String, todoId: String, accepted: Boolean, rejectReason: String?, currentEnergy: String
+    ) {
         val todo = todoRepository.findById(todoId).orElse(null) ?: return
 
         if (accepted) {
@@ -39,7 +47,12 @@ class SmartPlannerService(
             // Wir belohnen die Aufwands-Kategorie bei dieser Energie
             val effortCategory = if (todo.effort > 3) "aufwendig" else "leicht"
             updateScore(userId, currentEnergy, "EFFORT", effortCategory, plusPoints = 5)
+
+            todo.cooldownTurns = 0
+            todoRepository.save(todo)
         } else {
+            todo.cooldownTurns = MAX_COOLDOWN_TURNS + 1
+            todoRepository.save(todo)
             // 👎 BESTRAFUNG: Nutzer hat abgelehnt. Jetzt schauen wir, WARUM:
             when (rejectReason) {
                 "too_heavy" -> {
@@ -47,11 +60,13 @@ class SmartPlannerService(
                     val effortCategory = if (todo.effort > 3) "aufwendig" else "leicht"
                     updateScore(userId, currentEnergy, "EFFORT", effortCategory, plusPoints = -10)
                 }
+
                 "too_long" -> {
                     // Es dauert zu lange (unabhängig von der Energie -> "any")
                     val timeCategory = if (todo.effort > 3) "lang" else "kurz"
                     updateScore(userId, "any", "TIME", timeCategory, plusPoints = -8)
                 }
+
                 "no_motivation" -> {
                     // Keine Lust auf diesen spezifischen Typ (z.B. Tag/Kategorie des To-Dos)
                     // Angenommen dein Todo hat ein Feld 'category' oder 'tag' (z.B. "Doku")
@@ -72,31 +87,46 @@ class SmartPlannerService(
         preferenceRepository.save(preference)
     }
 
-    fun calculatePerfectRecommendation(userId: String, userEnergy: String, workingTimeLeft: Double): RecommendedTodoResponse {
+    @Transactional
+    fun calculatePerfectRecommendation(
+        userId: String, userEnergy: String, workingTimeLeft: Double
+    ): RecommendedTodoResponse {
         validateUserExists(userId, userRepository)
 
         val settings = plannerSettingsRepository.findById(userId).orElseGet {
             PlannerSettingsEntity(id = userId, defaultWorkingHours = 8, primeTimeStartHour = 10, primeTimeEndHour = 18)
         }
 
-        // ⚡ FEHLER KORRIGIERT: Wir holen ALLE offenen To-Dos, ohne sie wegen der Zeit hart zu blockieren!
-        val matchPool = todoRepository.findByUserIdAndDoneFalse(userId) ?: emptyList()
+        // 1. Punktgenau nur DEINE offenen Aufgaben aus der DB holen
+        val matchPool = todoRepository.findActivePlannerTodosForUser(userId)
+        if (matchPool.isEmpty()) {
+            return RecommendedTodoResponse(null, "", "")
+        }
 
-        if (matchPool.isEmpty()) return RecommendedTodoResponse(null, "", "")
+        matchPool.forEach { todo ->
+            if (todo.cooldownTurns > 0) {
+                todo.cooldownTurns -= 1
+                todoRepository.save(todo) // In der DB aktualisieren
+            }
+        }
 
-        // --- KI-FILTERUNG (Deine Fokus-Logik bleibt) ---
-        var filteredPool = matchPool
+        val coolDownPool = filterPoolByCooldown(matchPool)
+
+// 🎯 SCHRITT B: ERST DANACH KI-FILTERUNG (Energie & Fokus) auf der bereinigten Liste
+        var filteredPool = coolDownPool
         if (userEnergy == "low") {
-            filteredPool = matchPool.filter { focusPredictorService.predict(it.task) == FocusType.LOW_FOCUS }
+            filteredPool = coolDownPool.filter { focusPredictorService.predict(it.task) == FocusType.LOW_FOCUS }
         } else if (userEnergy == "high") {
-            val highFocusTasks = matchPool.filter { focusPredictorService.predict(it.task) == FocusType.HIGH_FOCUS }
+            val highFocusTasks = coolDownPool.filter { focusPredictorService.predict(it.task) == FocusType.HIGH_FOCUS }
             if (highFocusTasks.isNotEmpty()) {
                 filteredPool = highFocusTasks
             }
         }
 
-        // Falls durch den Fokus-Filter alles leer ist, fallen wir auf den Gesamtpool zurück
-        val finalPool = if (filteredPool.isEmpty()) matchPool else filteredPool
+      // Wenn die KI-Filterung den finalPool komplett leeren würde (z.B. nur High-Focus da bei Low-Energy),
+      // nutzen wir den finalPool als Fallback, damit der User irgendwas bekommt.
+        val finalPool = if (filteredPool.isEmpty()) filteredPool else filteredPool
+        // 5. SCORING BERECHNEN
 
         val userPreferences = preferenceRepository.findByUserId(userId)
         val currentHour = LocalTime.now().hour
@@ -106,32 +136,23 @@ class SmartPlannerService(
             var score = 0
             val isHeavy = (todo.effort ?: 0) > 3
 
-            // A) Basis-Score durch Dringlichkeit
             if (isUrgent(todo)) {
                 score += 100
             }
 
-            // B) 🧠 DEIN NEUER RECHERCHE-MODUS-ALGORITHMUS
             if (userEnergy == "low" && workingTimeLeft <= 2.0 && isHeavy) {
-                // Genau dein Szenario: Wenig Kraft, kurz vor Feierabend, großer Brocken!
-                // Wir geben einen fetten Bonus für das "Über-Nacht-Sacken-lassen"
                 score += 150
-                println("🧠 Inkubations-Effekt getriggert für: ${todo.task}. Ab in den Recherche-Modus!")
             } else {
-                // Normales biologisches Scoring
                 if (isInsidePrimeTime && userEnergy != "low") {
                     if (isHeavy) score += 30 else score += 10
                 } else {
                     if (!isHeavy) score += 30 else score += 10
                 }
-
-                // Sanfter Zeit-Bonus: Wenn man noch viel Energie hat, belohnen wir Aufgaben, die in die Restzeit passen
                 if (userEnergy != "low" && (todo.effort ?: 0) <= workingTimeLeft) {
                     score += 20
                 }
             }
 
-            // C) KI-GEWICHTUNG (Feedback-Punkte aufrechnen)
             val effortCategory = if (isHeavy) "aufwendig" else "leicht"
             val timeCategory = if (isHeavy) "lang" else "kurz"
             val todoTag = todo.category ?: "Standard"
@@ -139,22 +160,16 @@ class SmartPlannerService(
             userPreferences.forEach { pref ->
                 when (pref.preferenceType) {
                     "EFFORT" -> {
-                        if (pref.userEnergy == userEnergy && pref.preferenceValue == effortCategory) {
-                            score += pref.score
-                        }
+                        if (pref.userEnergy == userEnergy && pref.preferenceValue == effortCategory) score += pref.score
                     }
+
                     "TIME" -> {
-                        if (pref.preferenceValue == timeCategory) {
-                            score += pref.score
-                        }
+                        if (pref.preferenceValue == timeCategory) score += pref.score
                     }
+
                     "MOTIVATION" -> {
                         if (pref.preferenceValue == "Tag:$todoTag") {
-                            if (pref.score < -30) {
-                                score -= 500 // Frust-Hammer 🔨
-                            } else {
-                                score += pref.score
-                            }
+                            if (pref.score < -30) score -= 500 else score += pref.score
                         }
                     }
                 }
@@ -166,28 +181,42 @@ class SmartPlannerService(
         val winnerTodo = scoredTodos.maxByOrNull { it.second }?.first
 
         if (winnerTodo == null) {
-            return RecommendedTodoResponse(
-                todo = null,
-                modeCode = "CLEAN_SLATE",
-                reasonCode = "NO_TODOS_LEFT"
-            )
+            return RecommendedTodoResponse(todo = null, modeCode = "CLEAN_SLATE", reasonCode = "NO_TODOS_LEFT")
         }
 
-// Prüfen, ob dein genialer Inkubations-Effekt (Recherche-Modus) zutrifft
         val isRecherche = userEnergy == "low" && workingTimeLeft <= 2.0 && (winnerTodo.effort ?: 0) > 3
+
+        // 2. 🌀 DER DECAY-LOOP: Zähler für alle deine Zettel runterfahren
+        matchPool.forEach { todo ->
+            if (todo.cooldownTurns > 0) {
+                todo.cooldownTurns -= 1
+                todoRepository.save(todo)
+            }
+        }
 
         return if (isRecherche) {
             RecommendedTodoResponse(
-                todo = winnerTodo.toDto(),
-                modeCode = "RECHERCHE",
-                reasonCode = "LOW_ENERGY_SHORT_TIME"
+                todo = todoService.mapToDto(winnerTodo), modeCode = "RECHERCHE", reasonCode = "LOW_ENERGY_SHORT_TIME"
             )
         } else {
             RecommendedTodoResponse(
-                todo = winnerTodo.toDto(),
-                modeCode = "STANDARD",
-                reasonCode = "DEFAULT"
+                todo = todoService.mapToDto(winnerTodo), modeCode = "STANDARD", reasonCode = "DEFAULT"
             )
         }
+    }
+
+    /**
+     * Hilfsmethode: Filtert stufenweise nach dem Cooldown-Level.
+     */
+    private fun filterPoolByCooldown(pool: List<TodoEntity>): List<TodoEntity> {
+        println("🔍 [PLANNER DEBUG] Starte Filterung. Pool-Größe: ${pool.size}")
+        for (cooldownLevel in 0..MAX_COOLDOWN_TURNS) {
+            val candidates = pool.filter { it.cooldownTurns == cooldownLevel }
+            if (candidates.isNotEmpty()) {
+                println("   🎯 Gewähltes Cooldown-Level: $cooldownLevel (Anzahl: ${candidates.size})")
+                return candidates
+            }
+        }
+        return pool
     }
 }

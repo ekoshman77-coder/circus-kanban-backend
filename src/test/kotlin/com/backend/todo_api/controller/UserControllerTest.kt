@@ -1,7 +1,6 @@
 package com.backend.todo_api.controller
 
 import com.backend.todo_api.dto.CreateUserDto
-import com.backend.todo_api.dto.UserDto
 import com.backend.todo_api.services.UserAlreadyExistsException
 import com.backend.todo_api.services.UserService
 import com.fasterxml.jackson.databind.ObjectMapper
@@ -24,12 +23,18 @@ class UserControllerTest {
 
     @Test
     fun `registerUser sollte bei leerem Username ein HTTP 400 Bad Request werfen`() {
-        val ungueltigesDto = CreateUserDto(username = "   ")
+        // 🎯 FIX: Wir übergeben ein gültiges Passwort (min. 6 Zeichen für OnRegisterOrLogin Gruppe)!
+        val dto = CreateUserDto(
+            username = "   ",
+            firstName = "Max",
+            lastName = "Mustermann",
+            password = "validPassword123"
+        )
 
         mockMvc.perform(
             post("/api/users/register")
                 .contentType(MediaType.APPLICATION_JSON)
-                .content(objectMapper.writeValueAsString(ungueltigesDto))
+                .content(objectMapper.writeValueAsString(dto))
         )
             .andExpect(status().isBadRequest)
             .andExpect(jsonPath("$.error").value("Name darf nicht leer sein!"))
@@ -37,7 +42,13 @@ class UserControllerTest {
 
     @Test
     fun `registerUser sollte bei bereits existierendem User ein HTTP 409 Conflict werfen`() {
-        val existierenderUserDto = CreateUserDto(username = "admin")
+        // 🎯 FIX: Wir füttern das DTO mit allen Pflichtfeldern, inklusive Passwort!
+        val dto = CreateUserDto(
+            username = "admin",
+            firstName = "Admin",
+            lastName = "System",
+            password = "securePassword123"
+        )
 
         // Wir zwingen den Service, deine benutzerdefinierte Exception zu werfen
         every { userService.register(any()) } throws UserAlreadyExistsException("Username bereits vergeben!")
@@ -45,7 +56,7 @@ class UserControllerTest {
         mockMvc.perform(
             post("/api/users/register")
                 .contentType(MediaType.APPLICATION_JSON)
-                .content(objectMapper.writeValueAsString(existierenderUserDto))
+                .content(objectMapper.writeValueAsString(dto))
         )
             .andExpect(status().isConflict)
             .andExpect(jsonPath("$.error").value("Username bereits vergeben!"))

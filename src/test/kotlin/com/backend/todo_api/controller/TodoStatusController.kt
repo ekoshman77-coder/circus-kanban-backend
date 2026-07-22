@@ -32,6 +32,7 @@ class TodoStatusControllerTest {
             levelUp = false,
             currentLevel = 4,
             levelTitle = "Kotlin-Ninja",
+            levelIcon = "🥹",
             currentXp = 320,
             currentLevelXpStart = 300,
             nextLevelXpRequired = 500

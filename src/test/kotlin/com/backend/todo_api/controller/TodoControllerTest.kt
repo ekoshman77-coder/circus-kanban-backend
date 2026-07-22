@@ -37,6 +37,7 @@ class TodoControllerTest {
                 levelUp = false,
                 currentLevel = 2,
                 levelTitle = "Code-Anfänger",
+                levelIcon = "🥹",
                 currentXp = 120,
                 currentLevelXpStart = 100,
                 nextLevelXpRequired = 200

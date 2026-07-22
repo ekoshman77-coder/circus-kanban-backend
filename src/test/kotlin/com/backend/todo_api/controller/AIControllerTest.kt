@@ -67,10 +67,11 @@ class AIControllerTest {
     fun `GET categories sollte die GLOBALEN Kategorien ohne User-Einschraenkung laden`() {
         val mockGlobalCategories = listOf("Arbeit", "Datenbank", "Infrastruktur")
 
-        every { trainManager.getAllGlobalCategories(AiContextType.TODO_CATEGORY) } returns mockGlobalCategories
+        every { trainManager.getGlobalCategories(AiContextType.TODO_CATEGORY) } returns mockGlobalCategories
 
         mockMvc.perform(
-            get("/api/ai/categories")
+            // 🎯 FIX: Hier den Pfad an die aktuelle Controller-URL anpassen!
+            get("/api/ai/todos/categories")
                 .param("contextType", "todo")
         )
             .andExpect(status().isOk)
