@@ -18,7 +18,7 @@ open class CreateTodoDto(
     val lastDeveloperId: String? = null
 )
 
-class TodoDto(
+open class TodoDto(
     val id: String = "",
 
     // 🎯 JETZT MIT STANDARDWERTEN:

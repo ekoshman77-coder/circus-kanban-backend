@@ -45,5 +45,8 @@ class TodoEntity(
     var lastDeveloperId: String? = null,
 
     @Column(name = "cooldown_turns", nullable = false)
-    var cooldownTurns: Int = 0 // 🌬️ Der Atem-Pausen-Zähler!
+    var cooldownTurns: Int = 0, // 🌬️ Der Atem-Pausen-Zähler!
+
+    @Column(name = "snoozed_until", nullable = false)
+    var snoozedUntil: Long = 0L // ⏱️ Der Zeitstempel, bis wann geschlummert wird!
 )

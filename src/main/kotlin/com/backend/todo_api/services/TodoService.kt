@@ -1,8 +1,6 @@
 package com.backend.todo_api.services
 
 import com.backend.todo_api.data.entity.TodoEntity
-import com.backend.todo_api.data.repository.MilestoneRepository
-import com.backend.todo_api.data.repository.ProjectMemberRepository
 import com.backend.todo_api.data.repository.TodoRepository
 import com.backend.todo_api.data.repository.UserRepository
 import com.backend.todo_api.dto.CreateTodoDto
@@ -11,19 +9,16 @@ import com.backend.todo_api.dto.QuickPanelMode
 import com.backend.todo_api.dto.SyncResultDto
 import com.backend.todo_api.dto.TodoDto
 import com.backend.todo_api.dto.TodoUpdateResponse
-import com.backend.todo_api.dto.toNewEntity  // 👈 Unsere neuen Extensions importieren!
-import com.backend.todo_api.dto.toEntity
-import com.backend.todo_api.dto.toDto
 import com.backend.todo_api.exceptions.TodoNotFoundException
 import com.backend.todo_api.model.AiContextType
 import com.backend.todo_api.model.FocusType
 import com.backend.todo_api.providers.AiGlobalDataProvider
 import com.backend.todo_api.utils.AiTextUtil
 import org.springframework.stereotype.Service
-import org.springframework.data.repository.findByIdOrNull
 import com.backend.todo_api.validation.*
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
+import org.springframework.transaction.annotation.Transactional
 
 @Service
 class TodoService (
@@ -31,8 +26,6 @@ class TodoService (
     private val userRepository: UserRepository,
     private val gamificationService: GamificationService,
     private val milestoneService: MilestoneService,
-    private val milestoneRepository: MilestoneRepository,
-    private val  projectMemberRepository: ProjectMemberRepository,
 ) {
     // 1. NEUERSTELLUNG: Wandelt CreateTodoDto in eine neue Entity um und initialisiert versteckte Felder
     private fun mapToNewEntity(dto: CreateTodoDto): TodoEntity {
@@ -57,7 +50,8 @@ class TodoService (
             // 🔮 UNSERE VERSTECKTEN KI-/GAMIFICATION-FELDER (Sicher initialisiert!)
             effortChangesCount = 0,
             cooldownTurns = 0,
-            focusType = "LOW_FOCUS" // Oder was dein Standard-Typ für neue Todos ist
+            focusType = "LOW_FOCUS",
+            snoozedUntil = 0L
         )
     }
 
@@ -228,7 +222,7 @@ class TodoService (
     }
 
     /**
-     * 🗑️ Erledigte private Aufgaben des Users gesammelt löschen (wird archiviert).
+     * Erledigte private Aufgaben des Users gesammelt löschen (wird archiviert).
      * Filtert in der Query Projekt-Aufgaben (mit milestoneId) automatisch heraus.
      */
     fun deleteCompletedPrivateTodos(userId: String) {
@@ -276,7 +270,7 @@ class TodoService (
         return mapToDto(saved)
     }
 
-    @org.springframework.transaction.annotation.Transactional
+    @Transactional
     fun toggleStatusWithGamification(id: String, isDone: Boolean, userId: String): GamificationResult {
         // 1. Status in der DB updaten (wirft Exception, falls nicht vorhanden)
         val updatedTodoDto = this.updateStatus(id, isDone, userId)
@@ -299,17 +293,18 @@ class TodoService (
             newTodo.effortChangesCount = oldTodo.effortChangesCount
         }
 
-        // 🔮 DIE RETTUNG DER VERSTECKTEN KI-FELDER:
+        // DIE RETTUNG DER VERSTECKTEN KI-FELDER:
         // Wir impfen die neue Entity mit den unberührten Werten aus der DB
         newTodo.focusType = oldTodo.focusType
         newTodo.cooldownTurns = oldTodo.cooldownTurns
         newTodo.isArchived = oldTodo.isArchived
         newTodo.createdAt = oldTodo.createdAt // Auch das originale Erstellungsdatum bleibt so sicher!
+        newTodo.snoozedUntil = oldTodo.snoozedUntil
 
         return newTodo
     }
 
-    @org.springframework.transaction.annotation.Transactional
+    @Transactional
     fun syncBulkTodos(userId: String, bulkDtos: List<TodoDto>): SyncResultDto {
         validateUserExists(userId, userRepository)
 

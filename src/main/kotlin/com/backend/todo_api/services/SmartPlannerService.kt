@@ -93,53 +93,129 @@ class SmartPlannerService(
     ): RecommendedTodoResponse {
         validateUserExists(userId, userRepository)
 
+
         val settings = plannerSettingsRepository.findById(userId).orElseGet {
             PlannerSettingsEntity(id = userId, defaultWorkingHours = 8, primeTimeStartHour = 10, primeTimeEndHour = 18)
         }
 
-        // 1. Punktgenau nur DEINE offenen Aufgaben aus der DB holen
         val matchPool = todoRepository.findActivePlannerTodosForUser(userId)
+
         if (matchPool.isEmpty()) {
             return RecommendedTodoResponse(null, "", "")
         }
 
-        matchPool.forEach { todo ->
-            if (todo.cooldownTurns > 0) {
-                todo.cooldownTurns -= 1
-                todoRepository.save(todo) // In der DB aktualisieren
-            }
+        // ⏱️ SCHRITT 1: Snooze-Filterung & Sofort-Fallback
+        val currentTime = System.currentTimeMillis()
+
+        println("🔍 --- EMPFEHLUNG FILTER-CHECK ---")
+        println("Jetzt-Zeit beim Filtern UTC: ${java.time.Instant.ofEpochMilli(currentTime)}")
+
+        matchPool.forEach {
+            val ticketTime = java.time.Instant.ofEpochMilli(it.snoozedUntil)
+            val isStillSnoozed = it.snoozedUntil > currentTime
+            println("Task: '${it.task}' | SnoozedUntil UTC: $ticketTime | Ist gesnoozed? $isStillSnoozed")
         }
 
-        val coolDownPool = filterPoolByCooldown(matchPool)
+        val nonSnoozedPool = matchPool.filter { it.snoozedUntil <= currentTime }
 
-// 🎯 SCHRITT B: ERST DANACH KI-FILTERUNG (Energie & Fokus) auf der bereinigten Liste
-        var filteredPool = coolDownPool
+
+
+        if (nonSnoozedPool.isEmpty()) {
+            val earliestWakeupTodo = matchPool.minByOrNull { it.snoozedUntil }
+            return RecommendedTodoResponse(
+                todo = earliestWakeupTodo?.let { todoService.mapToDto(it) },
+                modeCode = "STANDARD",
+                reasonCode = "ALL_SNOOZED"
+            )
+        }
+
+        // 🌬️ SCHRITT 2: Cooldown-Dekrementierung & Filterung
+        decrementCooldowns(nonSnoozedPool)
+        val coolDownPool = filterPoolByCooldown(nonSnoozedPool)
+
+        // 🎯 SCHRITT 3: KI-Filterung (Fokus & Energie)
+        val finalPool = applyAiFocusFiltering(coolDownPool, userEnergy)
+
+        // 📊 SCHRITT 4: Scoring berechnen & Gewinner ermitteln
+        val userPreferences = preferenceRepository.findByUserId(userId)
+        val winnerTodo = calculateScoresAndGetWinner(finalPool, userEnergy, workingTimeLeft, settings, userPreferences)
+
+        if (winnerTodo == null) {
+            return RecommendedTodoResponse(todo = null, modeCode = "CLEAN_SLATE", reasonCode = "NO_TODOS_LEFT")
+        }
+
+        // 🚀 SCHRITT 5: Ergebnis-Zuweisung
+        val isRecherche = userEnergy == "low" && workingTimeLeft <= 2.0 && (winnerTodo.effort ?: 0) > 3
+        val finalReasonCode = when {
+            isRecherche -> "LOW_ENERGY_SHORT_TIME"
+                isUrgent(winnerTodo) -> "URGENT_DEADLINE"
+            else -> "DEFAULT"
+        }
+
+        return RecommendedTodoResponse(
+            todo = todoService.mapToDto(winnerTodo),
+        modeCode = if (isRecherche) "RECHERCHE" else "STANDARD",
+        reasonCode = finalReasonCode
+        )
+    }
+
+    // =============================================================================
+    // 🛠️ PRIVATE HILFSMETHODEN FÜR DAS REFACTORING
+    // =============================================================================
+
+    private fun decrementCooldowns(pool: List<TodoEntity>) {
+        pool.forEach { todo ->
+            if (todo.cooldownTurns > 0) {
+                todo.cooldownTurns -= 1
+                todoRepository.save(todo)
+            }
+        }
+    }
+
+    private fun filterPoolByCooldown(pool: List<TodoEntity>): List<TodoEntity> {
+        for (cooldownLevel in 0..MAX_COOLDOWN_TURNS) {
+            val candidates = pool.filter { it.cooldownTurns == cooldownLevel }
+            if (candidates.isNotEmpty()) {
+                return candidates
+            }
+        }
+        return pool
+    }
+
+    private fun applyAiFocusFiltering(pool: List<TodoEntity>, userEnergy: String): List<TodoEntity> {
+        var filteredPool = pool
         if (userEnergy == "low") {
-            filteredPool = coolDownPool.filter { focusPredictorService.predict(it.task) == FocusType.LOW_FOCUS }
+            filteredPool = pool.filter { focusPredictorService.predict(it.task) == FocusType.LOW_FOCUS }
         } else if (userEnergy == "high") {
-            val highFocusTasks = coolDownPool.filter { focusPredictorService.predict(it.task) == FocusType.HIGH_FOCUS }
+            val highFocusTasks = pool.filter { focusPredictorService.predict(it.task) == FocusType.HIGH_FOCUS }
             if (highFocusTasks.isNotEmpty()) {
                 filteredPool = highFocusTasks
             }
         }
+        // Bugfix im Fallback: Wenn filteredPool leer ist, nimm das originale pool!
+        return if (filteredPool.isEmpty()) pool else filteredPool
+    }
 
-      // Wenn die KI-Filterung den finalPool komplett leeren würde (z.B. nur High-Focus da bei Low-Energy),
-      // nutzen wir den finalPool als Fallback, damit der User irgendwas bekommt.
-        val finalPool = if (filteredPool.isEmpty()) filteredPool else filteredPool
-        // 5. SCORING BERECHNEN
-
-        val userPreferences = preferenceRepository.findByUserId(userId)
+    private fun calculateScoresAndGetWinner(
+        pool: List<TodoEntity>,
+        userEnergy: String,
+        workingTimeLeft: Double,
+        settings: PlannerSettingsEntity,
+        userPreferences: List<UserAiPreference>
+    ): TodoEntity? {
         val currentHour = LocalTime.now().hour
         val isInsidePrimeTime = currentHour in settings.primeTimeStartHour..settings.primeTimeEndHour
 
-        val scoredTodos = finalPool.map { todo ->
+        val scoredTodos = pool.map { todo ->
             var score = 0
             val isHeavy = (todo.effort ?: 0) > 3
 
+            // Dringlichkeit
             if (isUrgent(todo)) {
                 score += 100
             }
 
+            // Kombi-Score oder Zeitfenster-Score
             if (userEnergy == "low" && workingTimeLeft <= 2.0 && isHeavy) {
                 score += 150
             } else {
@@ -153,6 +229,7 @@ class SmartPlannerService(
                 }
             }
 
+            // Benutzereinstellungen einrechnen
             val effortCategory = if (isHeavy) "aufwendig" else "leicht"
             val timeCategory = if (isHeavy) "lang" else "kurz"
             val todoTag = todo.category ?: "Standard"
@@ -162,11 +239,9 @@ class SmartPlannerService(
                     "EFFORT" -> {
                         if (pref.userEnergy == userEnergy && pref.preferenceValue == effortCategory) score += pref.score
                     }
-
                     "TIME" -> {
                         if (pref.preferenceValue == timeCategory) score += pref.score
                     }
-
                     "MOTIVATION" -> {
                         if (pref.preferenceValue == "Tag:$todoTag") {
                             if (pref.score < -30) score -= 500 else score += pref.score
@@ -178,45 +253,25 @@ class SmartPlannerService(
             Pair(todo, score)
         }
 
-        val winnerTodo = scoredTodos.maxByOrNull { it.second }?.first
-
-        if (winnerTodo == null) {
-            return RecommendedTodoResponse(todo = null, modeCode = "CLEAN_SLATE", reasonCode = "NO_TODOS_LEFT")
-        }
-
-        val isRecherche = userEnergy == "low" && workingTimeLeft <= 2.0 && (winnerTodo.effort ?: 0) > 3
-
-        // 2. 🌀 DER DECAY-LOOP: Zähler für alle deine Zettel runterfahren
-        matchPool.forEach { todo ->
-            if (todo.cooldownTurns > 0) {
-                todo.cooldownTurns -= 1
-                todoRepository.save(todo)
-            }
-        }
-
-        return if (isRecherche) {
-            RecommendedTodoResponse(
-                todo = todoService.mapToDto(winnerTodo), modeCode = "RECHERCHE", reasonCode = "LOW_ENERGY_SHORT_TIME"
-            )
-        } else {
-            RecommendedTodoResponse(
-                todo = todoService.mapToDto(winnerTodo), modeCode = "STANDARD", reasonCode = "DEFAULT"
-            )
-        }
+        return scoredTodos.maxByOrNull { it.second }?.first
     }
 
-    /**
-     * Hilfsmethode: Filtert stufenweise nach dem Cooldown-Level.
-     */
-    private fun filterPoolByCooldown(pool: List<TodoEntity>): List<TodoEntity> {
-        println("🔍 [PLANNER DEBUG] Starte Filterung. Pool-Größe: ${pool.size}")
-        for (cooldownLevel in 0..MAX_COOLDOWN_TURNS) {
-            val candidates = pool.filter { it.cooldownTurns == cooldownLevel }
-            if (candidates.isNotEmpty()) {
-                println("   🎯 Gewähltes Cooldown-Level: $cooldownLevel (Anzahl: ${candidates.size})")
-                return candidates
-            }
-        }
-        return pool
+    @Transactional
+    fun snoozeTodoInBackend(todoId: String, snoozeDurationInMinutes: Int = 120): TodoEntity? {
+        val todo = todoRepository.findById(todoId).orElse(null) ?: return null
+
+        // Aktuelle Zeit + X Minuten in Millisekunden rechnen
+        val millisInFuture = snoozeDurationInMinutes * 60 * 1000L
+        todo.snoozedUntil = System.currentTimeMillis() + millisInFuture
+
+        val currentDateTime = java.time.Instant.ofEpochMilli(System.currentTimeMillis())
+        val snoozedUntilDateTime = java.time.Instant.ofEpochMilli(todo.snoozedUntil)
+        println("⏰ --- SNOOZE ZEITZONEN-CHECK ---")
+        println("Aktuelle Serverzeit UTC: $currentDateTime")
+        println("Ticket gesnoozed bis UTC: $snoozedUntilDateTime")
+        println("Roher Long-Wert in DB: ${todo.snoozedUntil}")
+        println("---------------------------------")
+
+        return todoRepository.save(todo)
     }
 }

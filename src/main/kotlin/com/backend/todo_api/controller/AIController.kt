@@ -7,9 +7,12 @@ import com.backend.todo_api.dto.FocusPredictionResponse
 import com.backend.todo_api.dto.PlannerFeedbackRequest
 import com.backend.todo_api.dto.PlannerRecommendationRequest
 import com.backend.todo_api.dto.RecommendedTodoResponse
+import com.backend.todo_api.dto.SnoozyTodoRequest
 import com.backend.todo_api.model.AiContextType
 import com.backend.todo_api.services.SmartPlannerService
 import com.backend.todo_api.services.TrainManager
+import jakarta.validation.Valid
+import org.springframework.http.ResponseEntity
 import org.springframework.web.bind.annotation.*
 
 @CrossOrigin(origins = ["http://localhost:4200"])
@@ -90,7 +93,7 @@ class AIController(private val trainManager: TrainManager,
      * POST /api/ai/planner/feedback
      */
     @PostMapping("/planner/feedback")
-    fun handlePlannerFeedback(@RequestBody request: PlannerFeedbackRequest): org.springframework.http.ResponseEntity<Unit> {
+    fun handlePlannerFeedback(@RequestBody request: PlannerFeedbackRequest): ResponseEntity<Unit> {
         smartPlannerService.processUserFeedback(
             userId = request.userId,
             todoId = request.todoId,
@@ -98,6 +101,12 @@ class AIController(private val trainManager: TrainManager,
             rejectReason = request.rejectReason,
             currentEnergy = request.currentEnergy
         )
-        return org.springframework.http.ResponseEntity.ok().build()
+        return ResponseEntity.ok().build()
+    }
+
+    @PostMapping("/planner/snooze")
+    fun handleSnoozing(@Valid @RequestBody request: SnoozyTodoRequest): ResponseEntity<Unit> {
+        smartPlannerService.snoozeTodoInBackend(request.todoId, request.durationInMin)
+        return ResponseEntity.ok().build()
     }
 }
