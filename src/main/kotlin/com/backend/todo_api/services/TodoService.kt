@@ -7,6 +7,7 @@ import com.backend.todo_api.dto.CreateTodoDto
 import com.backend.todo_api.dto.GamificationResult
 import com.backend.todo_api.dto.QuickPanelMode
 import com.backend.todo_api.dto.SyncResultDto
+import com.backend.todo_api.dto.TodoBulkDto
 import com.backend.todo_api.dto.TodoDto
 import com.backend.todo_api.dto.TodoUpdateResponse
 import com.backend.todo_api.exceptions.TodoNotFoundException
@@ -305,53 +306,98 @@ class TodoService (
     }
 
     @Transactional
-    fun syncBulkTodos(userId: String, bulkDtos: List<TodoDto>): SyncResultDto {
+    fun syncBulkTodos(userId: String, bulkDtos: List<TodoBulkDto>): SyncResultDto {
         validateUserExists(userId, userRepository)
 
         val oldTodos = todoRepository.findByUserId(userId).associateBy { it.id }
-        var isChanged = false
 
         for (dto in bulkDtos) {
             val oldTodo = oldTodos[dto.id]
 
-            if (oldTodo != null) {
-                if (oldTodo.done != dto.done) {
-                    toggleStatusWithGamification(dto.id, dto.done, userId)
-                    isChanged = true
+            when (dto.syncAction) {
+
+                // ➕ FALL 1: Offline neu erstellt und nicht gelöscht
+                "CREATED" -> {
+                    if (oldTodo == null) {
+                        val newDto = CreateTodoDto(
+                            task = dto.task, description = dto.description, effort = dto.effort,
+                            userId = userId, done = dto.done, usedEffort = dto.usedEffort, milestoneId = dto.milestoneId
+                        )
+                        val entity = mapToNewEntity(newDto).apply { this.id = dto.id; this.done = dto.done }
+                        todoRepository.save(entity)
+
+                        if (dto.done) {
+                            gamificationService.processTodoStatusChange(userId, dto.effort, usedEffort = dto.usedEffort, isDone = true)
+                        }
+                    }
                 }
 
-                // 🛡️ SICHERER WEG: Wir nehmen eine Kopie der DB-Entity und mergen die DTO-Felder rein
-                val entityToUpdate = mergeDtoIntoEntity(dto, oldTodo)
+                // 📝 FALL 2: Auf dem Server bekannt und offline NUR geändert
+                "UPDATED" -> {
+                    if (oldTodo != null) {
+                        if (oldTodo.done != dto.done) {
+                            toggleStatusWithGamification(dto.id, dto.done, userId)
+                        }
+                        val entityToUpdate = mergeDtoIntoEntity(dto, oldTodo)
+                        todoRepository.save(updateEffortChange(oldTodo, entityToUpdate))
+                    }
+                }
 
-                // Nun übergeben wir die modifizierte Entity an updateEffortChange,
-                // wo die KI-Felder sicher verwaltet und zurückgegeben werden
-                todoRepository.save(updateEffortChange(oldTodo, entityToUpdate))
-            } else {
-                // Neuerstellung bleibt wie gehabt, nutzt jetzt aber mapToNewEntity für korrekte Defaults
-                val newDto = CreateTodoDto(
-                    task = dto.task,
-                    description = dto.description,
-                    effort = dto.effort,
-                    userId = userId
-                )
-                val entity = mapToNewEntity(newDto).apply { this.id = dto.id; this.done = dto.done }
-                todoRepository.save(entity)
+                // 🗑️ FALL 3: Auf dem Server bekannt und offline NUR gelöscht
+                "DELETED" -> {
+                    if (oldTodo != null) {
+                        // Falls es vor dem Löschen auf dem Server noch offen war, aber offline erledigt wurde,
+                        // müssen wir hier die Punkte sichern, bevor archiviert wird!
+                        if (!oldTodo.done && dto.done) {
+                            gamificationService.processTodoStatusChange(userId, oldTodo.effort, usedEffort = dto.usedEffort, isDone = true)
+                        }
+                        todoRepository.archiveById(dto.id) // 📦 Sicher archivieren!
+                    }
+                }
 
-                if (dto.done) {
-                    gamificationService.processTodoStatusChange(userId, dto.effort, usedEffort = dto.usedEffort, isDone = true)
-                    isChanged = true
+                // 💥 FALL 4: Unser wichtiges "Geändert UND gelöscht"-Zettelchen!
+                "DIRTY_AND_DELETED" -> {
+                    if (oldTodo != null) {
+                        // 1. Zuerst die geänderten Daten (Status/Effort) für die Gamification mergen!
+                        if (oldTodo.done != dto.done) {
+                            gamificationService.processTodoStatusChange(userId, dto.effort, usedEffort = dto.usedEffort, isDone = dto.done)
+                        }
+                        val entityToUpdate = mergeDtoIntoEntity(dto, oldTodo)
+                        todoRepository.save(updateEffortChange(oldTodo, entityToUpdate))
+
+                        // 2. Direkt danach sauber ab ins Archiv
+                        todoRepository.archiveById(dto.id)
+                    }
+                }
+
+                // 🛸 FALL 5: Offline erstellt UND offline direkt wieder gelöscht
+                "CREATED_AND_DELETED" -> {
+                    if (oldTodo == null) {
+                        // Wir erstellen die Entity direkt mit isArchived = true, sichern aber die Punkte!
+                        val newDto = CreateTodoDto(
+                            task = dto.task, description = dto.description, effort = dto.effort,
+                            userId = userId, done = dto.done, usedEffort = dto.usedEffort, milestoneId = dto.milestoneId
+                        )
+                        val entity = mapToNewEntity(newDto).apply {
+                            this.id = dto.id
+                            this.done = dto.done
+                            this.isArchived = true // 📦 Wandert sofort blind ins Archiv!
+                        }
+                        todoRepository.save(entity)
+
+                        if (dto.done) {
+                            gamificationService.processTodoStatusChange(userId, dto.effort, usedEffort = dto.usedEffort, isDone = true)
+                        }
+                    }
                 }
             }
         }
 
-        val aktuelleListe = getTodos(userId)
+        val aktuelleListe = getRelevantTodos(userId)
         val finalerGamificationStand = gamificationService.getGamificationState(userId)
 
-        return SyncResultDto(
-            liste = aktuelleListe,
-            gamificationResult = finalerGamificationStand
-        )
-      }
+        return SyncResultDto(liste = aktuelleListe, gamificationResult = finalerGamificationStand)
+    }
 
     /**
      * Reicht den Gamification-State einfach nur durch, damit der Controller

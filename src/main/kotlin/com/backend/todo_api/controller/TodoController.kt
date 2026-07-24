@@ -3,6 +3,7 @@ package com.backend.todo_api.controller
 import com.backend.todo_api.dto.CreateTodoDto
 import com.backend.todo_api.dto.QuickPanelMode
 import com.backend.todo_api.dto.SyncResultDto
+import com.backend.todo_api.dto.TodoBulkDto
 import com.backend.todo_api.dto.TodoDto
 import com.backend.todo_api.dto.TodoUpdateResponse
 import com.backend.todo_api.services.TodoService
@@ -95,7 +96,7 @@ class TodoController(private val todoService: TodoService) {
     @Operation(summary = "Offline-Synchronisation (Bulk-Sync)", description = "Gleicht die Offline-Liste ab und berechnet gesammelte Punkte.")
     fun syncBulk(
         @RequestParam userId: String,
-        @RequestBody offlineTodos: List<TodoDto>
+        @RequestBody offlineTodos: List<TodoBulkDto>
     ): ResponseEntity<SyncResultDto> { // 🌟 Typ angepasst!
         if (userId.isNullOrBlank()) {
             return ResponseEntity.badRequest().build()
