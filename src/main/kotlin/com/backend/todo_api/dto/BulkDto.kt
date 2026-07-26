@@ -24,7 +24,7 @@ class TodoBulkDto(
     teamStatus: String = "BACKLOG",
     lastDeveloperId: String? = null,
 
-    // 🏷️ Das Zettelchen exklusiv hier!
+    // Akzeptiert: "CREATED", "UPDATED", "DELETED", "DIRTY_AND_DELETED", "CREATED_AND_DELETED", "BULK_DELETE_COMPLETED", "BULK_DELETE_ALL"
     val syncAction: String = "FINE"
 ) : TodoDto(
     id, task, description, done, dueDate, completedAt, effort, usedEffort,

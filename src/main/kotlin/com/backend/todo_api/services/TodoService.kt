@@ -390,9 +390,19 @@ class TodoService (
                         }
                     }
                 }
+                // Chronologisches Massenlöschen aller erledigten privaten Aufgaben
+                "BULK_DELETE_COMPLETED" -> {
+                    this.deleteCompletedPrivateTodos(userId)
+                }
+
+                // Chronologisches Massenlöschen des gesamten privaten Boards
+                "BULK_DELETE_ALL" -> {
+                    this.deleteAllPrivateTodos(userId)
+                }
             }
         }
 
+        todoRepository.flush()
         val aktuelleListe = getRelevantTodos(userId)
         val finalerGamificationStand = gamificationService.getGamificationState(userId)
 
