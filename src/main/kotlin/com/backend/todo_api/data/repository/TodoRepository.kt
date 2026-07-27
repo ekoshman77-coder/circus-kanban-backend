@@ -127,4 +127,14 @@ interface TodoRepository : JpaRepository<TodoEntity, String> {
       )
 """)
     fun findActivePlannerTodosForUser(@Param("userId") userId: String): List<TodoEntity>
+
+    @Query("""
+    SELECT t FROM TodoEntity t 
+    WHERE t.isArchived = false 
+      AND t.done = false
+      AND t.assignedUserId = :userId
+      AND t.milestoneId IS NOT NULL 
+      AND t.milestoneId <> ''
+""")
+    fun findActiveTeamTodosForUser(@Param("userId") userId: String): List<TodoEntity>
 }

@@ -27,6 +27,7 @@ class TodoService (
     private val userRepository: UserRepository,
     private val gamificationService: GamificationService,
     private val milestoneService: MilestoneService,
+    private val streakService: StreakService
 ) {
     // 1. NEUERSTELLUNG: Wandelt CreateTodoDto in eine neue Entity um und initialisiert versteckte Felder
     private fun mapToNewEntity(dto: CreateTodoDto): TodoEntity {
@@ -191,7 +192,12 @@ class TodoService (
             )
         }
 
-        // Jetzt speichern wir die modifizierte Entity ab (cooldownTurns und focusType sind absolut sicher!)
+        val user = userRepository.findById(dto.userId).orElseThrow()
+        if (!oldDone && updatedEntity.done && !updatedEntity.milestoneId.isNullOrBlank()) {
+            streakService.updateStreakOnTodoCompleted(user, updatedEntity)
+        }
+
+        // Jetzt speichern die modifizierte Entity ab (cooldownTurns und focusType sind absolut sicher!)
         val savedEntity = todoRepository.save(updatedEntity)
 
         // Fall B: Ist es JETZT erledigt? Dann neuen Aufwand auf den Meilenstein rechnen.
@@ -215,10 +221,14 @@ class TodoService (
             )
         }
 
+        val freshUser = userRepository.findById(dto.userId).orElseThrow()
+        val streakInfo = streakService.getCurrentStreakInfo(freshUser)
+
         // 4. Antwort via mapToDto sauber konvertieren
         return TodoUpdateResponse(
             todo = mapToDto(savedEntity),
-            gamificationResult = gamificationResult
+            gamificationResult = gamificationResult,
+            streakInfo = streakInfo
         )
     }
 
@@ -310,73 +320,70 @@ class TodoService (
         validateUserExists(userId, userRepository)
 
         val oldTodos = todoRepository.findByUserId(userId).associateBy { it.id }
+        val user = userRepository.findById(userId).orElseThrow()
 
         for (dto in bulkDtos) {
             val oldTodo = oldTodos[dto.id]
 
             when (dto.syncAction) {
-
-                // ➕ FALL 1: Offline neu erstellt und nicht gelöscht
                 "CREATED" -> {
-                    if (oldTodo == null) {
-                        val newDto = CreateTodoDto(
-                            task = dto.task, description = dto.description, effort = dto.effort,
-                            userId = userId, done = dto.done, usedEffort = dto.usedEffort, milestoneId = dto.milestoneId
-                        )
-                        val entity = mapToNewEntity(newDto).apply { this.id = dto.id; this.done = dto.done }
-                        todoRepository.save(entity)
+                if (oldTodo == null) {
+                    val newDto = CreateTodoDto(
+                    task = dto.task, description = dto.description, effort = dto.effort,
+                    userId = userId, done = dto.done, usedEffort = dto.usedEffort, milestoneId = dto.milestoneId
+                    )
+                    val entity = mapToNewEntity(newDto).apply { this.id = dto.id; this.done = dto.done }
+                    todoRepository.save(entity)
 
-                        if (dto.done) {
-                            gamificationService.processTodoStatusChange(userId, dto.effort, usedEffort = dto.usedEffort, isDone = true)
+                    if (dto.done) {
+                        gamificationService.processTodoStatusChange(userId, dto.effort, usedEffort = dto.usedEffort, isDone = true)
+                        if (!entity.milestoneId.isNullOrBlank()) {
+                            streakService.updateStreakOnTodoCompleted(user, entity)
                         }
                     }
                 }
-
-                // 📝 FALL 2: Auf dem Server bekannt und offline NUR geändert
+            }
                 "UPDATED" -> {
                     if (oldTodo != null) {
                         if (oldTodo.done != dto.done) {
                             toggleStatusWithGamification(dto.id, dto.done, userId)
+                            if (dto.done && !oldTodo.milestoneId.isNullOrBlank()) {
+                                streakService.updateStreakOnTodoCompleted(user, oldTodo)
+                            }
                         }
                         val entityToUpdate = mergeDtoIntoEntity(dto, oldTodo)
                         todoRepository.save(updateEffortChange(oldTodo, entityToUpdate))
                     }
                 }
-
-                // 🗑️ FALL 3: Auf dem Server bekannt und offline NUR gelöscht
                 "DELETED" -> {
                     if (oldTodo != null) {
-                        // Falls es vor dem Löschen auf dem Server noch offen war, aber offline erledigt wurde,
-                        // müssen wir hier die Punkte sichern, bevor archiviert wird!
                         if (!oldTodo.done && dto.done) {
                             gamificationService.processTodoStatusChange(userId, oldTodo.effort, usedEffort = dto.usedEffort, isDone = true)
+                            if (!oldTodo.milestoneId.isNullOrBlank()) {
+                                streakService.updateStreakOnTodoCompleted(user, oldTodo)
+                            }
                         }
                         todoRepository.archiveById(dto.id) // 📦 Sicher archivieren!
                     }
                 }
-
-                // 💥 FALL 4: Unser wichtiges "Geändert UND gelöscht"-Zettelchen!
                 "DIRTY_AND_DELETED" -> {
                     if (oldTodo != null) {
-                        // 1. Zuerst die geänderten Daten (Status/Effort) für die Gamification mergen!
                         if (oldTodo.done != dto.done) {
                             gamificationService.processTodoStatusChange(userId, dto.effort, usedEffort = dto.usedEffort, isDone = dto.done)
+                            if (dto.done && !oldTodo.milestoneId.isNullOrBlank()) {
+                                streakService.updateStreakOnTodoCompleted(user, oldTodo)
+                            }
                         }
                         val entityToUpdate = mergeDtoIntoEntity(dto, oldTodo)
                         todoRepository.save(updateEffortChange(oldTodo, entityToUpdate))
-
-                        // 2. Direkt danach sauber ab ins Archiv
                         todoRepository.archiveById(dto.id)
                     }
                 }
-
-                // 🛸 FALL 5: Offline erstellt UND offline direkt wieder gelöscht
                 "CREATED_AND_DELETED" -> {
                     if (oldTodo == null) {
-                        // Wir erstellen die Entity direkt mit isArchived = true, sichern aber die Punkte!
                         val newDto = CreateTodoDto(
-                            task = dto.task, description = dto.description, effort = dto.effort,
-                            userId = userId, done = dto.done, usedEffort = dto.usedEffort, milestoneId = dto.milestoneId
+                        task = dto.task, description = dto.description, effort = dto.effort,
+                        userId = userId, done = dto.done, usedEffort = dto.usedEffort, milestoneId = dto.milestoneId
                         )
                         val entity = mapToNewEntity(newDto).apply {
                             this.id = dto.id
@@ -387,15 +394,15 @@ class TodoService (
 
                         if (dto.done) {
                             gamificationService.processTodoStatusChange(userId, dto.effort, usedEffort = dto.usedEffort, isDone = true)
+                            if (!entity.milestoneId.isNullOrBlank()) {
+                                streakService.updateStreakOnTodoCompleted(user, entity)
+                            }
                         }
                     }
                 }
-                // Chronologisches Massenlöschen aller erledigten privaten Aufgaben
                 "BULK_DELETE_COMPLETED" -> {
                     this.deleteCompletedPrivateTodos(userId)
                 }
-
-                // Chronologisches Massenlöschen des gesamten privaten Boards
                 "BULK_DELETE_ALL" -> {
                     this.deleteAllPrivateTodos(userId)
                 }
@@ -406,7 +413,15 @@ class TodoService (
         val aktuelleListe = getRelevantTodos(userId)
         val finalerGamificationStand = gamificationService.getGamificationState(userId)
 
-        return SyncResultDto(liste = aktuelleListe, gamificationResult = finalerGamificationStand)
+        // 👈 4. STREAK-LOGIK TEIL C: Den finalen Stand nach dem Massen-Sync berechnen
+        val freshUser = userRepository.findById(userId).orElseThrow()
+        val streakInfo = streakService.getCurrentStreakInfo(freshUser)
+
+        return SyncResultDto(
+            liste = aktuelleListe,
+        gamificationResult = finalerGamificationStand,
+        streakInfo = streakInfo // 🔥 Mitgeben!
+        )
     }
 
     /**

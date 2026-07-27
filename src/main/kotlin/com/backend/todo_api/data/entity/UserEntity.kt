@@ -1,6 +1,7 @@
 package com.backend.todo_api.data.entity
 
 import jakarta.persistence.*
+import java.time.LocalDateTime
 import java.util.UUID
 
 @Entity
@@ -30,6 +31,9 @@ class UserEntity(
 
     @Column(name = "level_title", nullable = false)
     var levelTitle: String = "",
+
+    @Column(name = "streak_covered_until")
+    var streakCoveredUntil: LocalDateTime? = null,
 
     @OneToMany(mappedBy = "user", cascade = [CascadeType.ALL], orphanRemoval = true)
     var projectMemberships: MutableList<ProjectMemberEntity> = mutableListOf()
