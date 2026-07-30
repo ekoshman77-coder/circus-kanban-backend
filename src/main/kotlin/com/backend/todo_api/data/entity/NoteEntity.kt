@@ -39,7 +39,10 @@ class NoteEntity(
     var isArchived: Boolean = false,
 
     @Column(name = "weather_code", nullable = true)
-    var weatherCode: Int? = null
+    var weatherCode: Int? = null,
+
+    @Column(name = "department_id", nullable = true)
+    var departmentId: String? = null
 ) {
     fun updateFromDto(dto: NoteDto) {
         this.title = dto.title
@@ -49,5 +52,6 @@ class NoteEntity(
         this.isInCalculation = dto.isInCalculation
         this.temperature = dto.temperature
         this.weatherCode = dto.weatherCode
+        this.departmentId = dto.departmentId
     }
 }

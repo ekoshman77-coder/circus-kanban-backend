@@ -20,25 +20,31 @@ open class CreateUserDto (
 
     @field:NotBlank(message = "Das Passwort darf nicht leer sein!", groups = [OnRegisterOrLogin::class])
     @field:Size(min = 6, message = "Das Passwort muss mindestens 6 Zeichen lang sein!", groups = [OnRegisterOrLogin::class])
-    var password: String = ""
+    var password: String = "",
+
+
 )
 
-class UserDto(
+open class UserDto(
     var id: String = "",
     username: String = "",
     firstName: String = "",
     lastName: String = "",
-    password: String = ""
+    password: String = "",
+    var departmentId: String? = null,
+    var isApproved: Boolean = false
 ) : CreateUserDto (username, firstName, lastName, password)
 
-// UNSER ZENTRALER MAPPER (Erweiterungsfunktion)
-// Jede UserEntity im gesamten Projekt kann jetzt blitzschnell in ein sicheres UserDto umgewandelt werden!
-fun UserEntity.toDto(): UserDto {
-    return UserDto(
-        id = this.id,
-        username = this.username,
-        firstName = this.firstName,
-        lastName = this.lastName
-        // password wird bewusst ignoriert -> Standardwert "" greift automatisch!
-    )
-}
+//// UNSER ZENTRALER MAPPER (Erweiterungsfunktion)
+//// Jede UserEntity im gesamten Projekt kann jetzt blitzschnell in ein sicheres UserDto umgewandelt werden!
+//fun UserEntity.toDto(): UserDto {
+//    return UserDto(
+//        id = this.id,
+//        username = this.username,
+//        firstName = this.firstName,
+//        lastName = this.lastName,
+//        // password wird bewusst ignoriert -> Standardwert "" greift automatisch!
+//        departmentId = this.departmentId,
+//        isApproved = this.isApproved
+//    )
+//}

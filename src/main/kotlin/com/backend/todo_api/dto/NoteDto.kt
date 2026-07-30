@@ -8,7 +8,8 @@ open class CreateNoteDto (
     val userId: String = "",
     val isInCalculation: Boolean = false,
     val temperature: Double? = null,
-    val weatherCode: Int? = null
+    val weatherCode: Int? = null,
+    val departmentId: String? = null
 )
 
 class NoteDto (
@@ -20,5 +21,6 @@ class NoteDto (
     userId: String = "",
     isInCalculation: Boolean = false,
     temperature: Double? = null,
-    weatherCode: Int? = null
-): CreateNoteDto(title, content, colorType, tag, userId, isInCalculation, temperature, weatherCode)
+    weatherCode: Int? = null,
+    departmentId: String? = null
+): CreateNoteDto(title, content, colorType, tag, userId, isInCalculation, temperature, weatherCode, departmentId)

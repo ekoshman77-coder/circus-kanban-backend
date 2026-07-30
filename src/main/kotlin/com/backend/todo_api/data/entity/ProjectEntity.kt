@@ -30,6 +30,9 @@ class ProjectEntity(
     @Column(nullable = false)
     var status: String = "Calculation",
 
+    @Column(name = "department_id", nullable = false)
+    var departmentId: String = "",
+
     @OneToMany(mappedBy = "project", cascade = [CascadeType.ALL], orphanRemoval = true, fetch = FetchType.EAGER)
     var milestones: MutableList<MilestoneEntity> = mutableListOf(),
 
@@ -55,6 +58,7 @@ class ProjectEntity(
         dto.content = this.content
         dto.status = this.status
         dto.fullMilestones = this.milestones.map { it.toDto() }
+        dto.departmentId = this.departmentId
 
         // 🗑️ ENTFARNT: Keine Zuweisung mehr an ein nicht-existierendes DTO-Feld!
 

@@ -1,12 +1,14 @@
 package com.backend.todo_api.dto
 
-data class UserResponseDto(
-    val id: String,
-    val username: String,
-    val firstName: String,
-    val lastName: String,
-    val projectIds: List<String>,
-    val coffeeBalance: Float,
-    val emoji: String,
-    val role: String
-)
+class UserResponseDto(
+    id: String = "",
+    username: String = "",
+    firstName: String = "",
+    lastName: String = "",
+    departmentId: String? = null,
+    isApproved: Boolean = false,
+    var projectIds: List<String> = ArrayList(),
+    var coffeeBalance: Float = 0f,
+    var emoji: String = "",
+    var role: String = ""
+) : UserDto(id, username, firstName, lastName, "", departmentId, isApproved)

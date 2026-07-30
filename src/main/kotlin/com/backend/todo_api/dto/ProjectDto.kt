@@ -8,12 +8,12 @@ open class CreateProjectDto {
     var content: String? = null
     var status: String = "Calculation" // 'Calculation' | 'Active' | 'Zip'
     var milestones: List<CreateMilestoneDto> = emptyList()
+    var departmentId: String = ""
     constructor()
 }
 
 class ProjectDto : CreateProjectDto {
     var id: String = ""
     var fullMilestones: List<MilestoneDto> = emptyList()
-
     constructor() : super()
 }

@@ -1,23 +1,27 @@
 package com.backend.todo_api.services
 
+import com.backend.todo_api.constants.AppConstants
 import com.backend.todo_api.data.entity.CoffeeAccountEntity
 import com.backend.todo_api.data.entity.PlannerSettingsEntity
 import com.backend.todo_api.data.entity.UserEntity
 import com.backend.todo_api.data.repository.CoffeeAccountRepository
+import com.backend.todo_api.data.repository.DepartmentRepository
 import com.backend.todo_api.data.repository.MilestoneRepository
 import com.backend.todo_api.data.repository.PlannerSettingsRepository
 import com.backend.todo_api.data.repository.ProjectRepository
 import com.backend.todo_api.data.repository.TodoRepository
 import com.backend.todo_api.data.repository.UserRepository
 import com.backend.todo_api.dto.CreateUserDto
+import com.backend.todo_api.dto.UserApproveDto
 import com.backend.todo_api.dto.UserDto
-import com.backend.todo_api.dto.toDto
+import com.backend.todo_api.dto.copyToUserDto
+import com.backend.todo_api.exceptions.UserAlreadyExistsException
+import com.backend.todo_api.exceptions.UserNotApprovedException
+import com.backend.todo_api.exceptions.UserNotFoundException
 import jakarta.transaction.Transactional
+import org.springframework.http.HttpStatus
 import org.springframework.stereotype.Service
-
-// Eigene Exceptions für saubere Fehlerbehandlung im Controller
-class UserAlreadyExistsException(message: String) : RuntimeException(message)
-class UserNotFoundException(message: String) : RuntimeException(message)
+import org.springframework.web.server.ResponseStatusException
 
 @Service
 class UserService(
@@ -27,10 +31,11 @@ class UserService(
     private val milestoneRepository: MilestoneRepository,
     private val projectRepository: ProjectRepository,
     private val coffeeAccountRepository: CoffeeAccountRepository,
-    private val passwordEncoder: org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder
+    private val passwordEncoder: org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder,
+    private val departmentRepository: DepartmentRepository,
 ) {
 
-    // 🔑 Logik für den Login
+    // 🔑 Login
     fun login(dto: CreateUserDto): UserDto {
         val usernameTrimmed = dto.username.trim()
         val userEntity = userRepository.findByUsernameIgnoreCase(usernameTrimmed)
@@ -40,10 +45,15 @@ class UserService(
             throw RuntimeException("Falsches Passwort!")
         }
 
-        return userEntity.toDto()
+        if (!userEntity.isApproved) {
+            throw UserNotApprovedException("Dein Account befindet sich noch im Warteraum. Ein Admin muss dich erst freischalten.")
+        }
+
+        // 🚀 Nutzt deine neue Methode!
+        return copyToUserDto(userEntity, UserDto())
     }
 
-    // ✨ Logik für die Registrierung
+    // ✨ Registrierung
     @Transactional
     fun register(dto: CreateUserDto): UserDto {
         val usernameTrimmed = dto.username.trim()
@@ -52,12 +62,28 @@ class UserService(
             throw UserAlreadyExistsException("Dieser Name ist leider schon vergeben!")
         }
 
+        val isFirstUser = userRepository.count() == 0L
+        var assignedDepartmentId: String? = null
+        var approvedStatus = false
+
+        if (isFirstUser) {
+            val adminDept = departmentRepository.findByNameIgnoreCase(AppConstants.ADMIN_DEPARTMENT_NAME)
+            assignedDepartmentId = adminDept?.id
+            approvedStatus = true
+            println("👑 Ur-Admin Registrierung erkannt! Gewählte Abteilung: ${AppConstants.ADMIN_DEPARTMENT_NAME}.")
+        } else {
+            approvedStatus = false
+            assignedDepartmentId = null
+        }
+
         val hashedPassword = passwordEncoder.encode(dto.password)
         val savedEntity = userRepository.save(UserEntity(
             username = usernameTrimmed,
             firstName = dto.firstName,
             lastName = dto.lastName,
-            password = if (hashedPassword == null)  "" else hashedPassword
+            password = if (hashedPassword == null)  "" else hashedPassword,
+            departmentId = assignedDepartmentId,
+            isApproved = approvedStatus
         ))
 
         val defaultSettings = PlannerSettingsEntity(
@@ -66,30 +92,38 @@ class UserService(
             primeTimeStartHour = 10,
             primeTimeEndHour = 18
         )
-
         plannerSettingsRepository.save(defaultSettings)
 
         val defaultCoffeeAccount = CoffeeAccountEntity(
             userId = savedEntity.id,
             balance = 0f,
-            emoji = "👩‍💻",
-            role = "Teammitglied"
+            emoji = if (isFirstUser) "👑" else "👩‍💻",
+            role = if (isFirstUser) "Admin" else "Teammitglied"
         )
         coffeeAccountRepository.save(defaultCoffeeAccount)
 
-        return savedEntity.toDto()
+        // 🚀 Nutzt deine neue Methode!
+        return copyToUserDto(savedEntity, UserDto())
     }
 
     @Transactional
-    fun updateUser(id: String, dto: CreateUserDto): UserDto {
+    fun updateUser(id: String, dto: UserDto): UserDto {
         val userEntity = userRepository.findById(id).orElseThrow {
             UserNotFoundException("Benutzer mit der ID $id wurde nicht gefunden.")
         }
 
+        if (userEntity.isApproved != dto.isApproved) {
+            throw ResponseStatusException(
+                HttpStatus.FORBIDDEN,
+                "Sicherheitswarnung: Statusänderungen (isApproved) sind über diesen Endpunkt nicht erlaubt!"
+            )
+        }
         userEntity.firstName = dto.firstName
         userEntity.lastName = dto.lastName
         val updatedUser = userRepository.save(userEntity)
-        return updatedUser.toDto()
+
+        // 🚀 Nutzt deine neue Methode!
+        return copyToUserDto(updatedUser, UserDto())
     }
 
     @Transactional
@@ -98,38 +132,66 @@ class UserService(
             UserNotFoundException("Benutzer mit der ID $id wurde nicht gefunden.")
         }
 
-        // 1. 📝 TODOs NEUTRALISIEREN
         val assignedTodos = todoRepository.findByAssignedUserId(id)
-        assignedTodos.forEach { todo ->
-            todo.assignedUserId = null
-        }
+        assignedTodos.forEach { todo -> todo.assignedUserId = null }
         todoRepository.saveAll(assignedTodos)
 
-        // 2. 🏁 MEILENSTEINE NEUTRALISIEREN
         val assignedMilestones = milestoneRepository.findByAssignedUserId(id)
-        assignedMilestones.forEach { milestone ->
-            milestone.assignedUser = null
-        }
+        assignedMilestones.forEach { milestone -> milestone.assignedUser = null }
         milestoneRepository.saveAll(assignedMilestones)
 
-        // 3. 📁 PROJEKT-ERSTELLER ABSICHERN
         val createdProjects = projectRepository.findByUserId(id)
-        createdProjects.forEach { project ->
-            project.userId = "DELETED_USER"
-        }
+        createdProjects.forEach { project -> project.userId = "DELETED_USER" }
         projectRepository.saveAll(createdProjects)
 
-        // 4. 🤝 ZWISCHENTABELLE LEEREN (Jetzt angepasst an die neue Listen-Struktur!)
-        // Wir holen uns das jeweilige Projekt aus der Mitgliedschaft und kappen die Verbindung
         ArrayList(userEntity.projectMemberships).forEach { membership ->
             membership.project.removeTeamMember(userEntity)
         }
         userEntity.projectMemberships.clear()
 
-        // 5. ⚙️ PLANNER SETTINGS LÖSCHEN
         plannerSettingsRepository.deleteById(id)
-
-        // 6. ⚰️ USER ENDGÜLTIG LÖSCHEN
         userRepository.delete(userEntity)
+    }
+
+    fun getApprovedUsers(): List<UserDto> {
+        // 🚀 Nutzt deine neue Methode via map!
+        return userRepository.findByIsApproved(true).map { copyToUserDto(it, UserDto()) }
+    }
+
+    fun getUnapprovedUsers(): List<UserDto> {
+        // 🚀 Nutzt deine neue Methode via map!
+        return userRepository.findByIsApproved(false).map { copyToUserDto(it, UserDto()) }
+    }
+
+    @Transactional
+    fun approveUser(userId: String, dto: UserApproveDto): UserDto {
+        val userEntity = userRepository.findById(userId).orElseThrow {
+            UserNotFoundException("Benutzer mit der ID $userId wurde nicht gefunden.")
+        }
+
+        userEntity.departmentId = dto.departmentId
+        userEntity.isApproved = true
+
+        val savedUser = userRepository.save(userEntity)
+
+        // 🚀 Nutzt deine neue Methode!
+        return copyToUserDto(savedUser, UserDto())
+    }
+
+    fun getUserById(userId: String): UserDto {
+        val userEntity = userRepository.findById(userId)
+            .orElseThrow{ UserNotFoundException("Benutzer mit der ID $userId wurde nicht gefunden.") }
+        return copyToUserDto(userEntity, UserDto())
+    }
+
+    // 🛡️ Hilfsmethode für den Security-Stempel
+    fun isAdminDepartment(departmentId: String?): Boolean {
+        if (departmentId == null) return false
+
+        // Wir suchen nach der Abteilung mit dem Namen "Administration"
+        val adminDept = departmentRepository.findByNameIgnoreCase(AppConstants.ADMIN_DEPARTMENT_NAME)
+
+        // Wenn die IDs übereinstimmen, ist der User ein Admin!
+        return adminDept?.id == departmentId
     }
 }

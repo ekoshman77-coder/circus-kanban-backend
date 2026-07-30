@@ -12,4 +12,11 @@ interface UserRepository : JpaRepository<UserEntity, String> {
 
     // 🔍 Spring generiert automatisch: "SELECT * FROM users WHERE LOWER(username) = LOWER(?)"
     fun findByUsernameIgnoreCase(username: String): UserEntity?
+
+    // 🔍 Für den Warteraum: Holt alle User, die auf Freischaltung warten (isApproved = false)
+    // Oder alle aktiven User (isApproved = true)
+    fun findByIsApproved(isApproved: Boolean): List<UserEntity>
+
+    // 🔍 Falls der Admin später gezielt nach unbestätigten Usern in einer bestimmten Abteilung sucht
+    fun findByIsApprovedAndDepartmentId(isApproved: Boolean, departmentId: String?): List<UserEntity>
 }

@@ -35,6 +35,12 @@ class UserEntity(
     @Column(name = "streak_covered_until")
     var streakCoveredUntil: LocalDateTime? = null,
 
+    @Column(name = "department_id", nullable = true)
+    var departmentId: String? = null,
+
+    @Column(name = "is_approved", nullable = false)
+    var isApproved: Boolean = false,
+
     @OneToMany(mappedBy = "user", cascade = [CascadeType.ALL], orphanRemoval = true)
     var projectMemberships: MutableList<ProjectMemberEntity> = mutableListOf()
 )

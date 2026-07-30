@@ -10,7 +10,7 @@ import org.springframework.web.bind.annotation.RestControllerAdvice
 class GlobalExceptionHandler {
 
     @ExceptionHandler(UserDeletedException::class)
-    fun handleUserNotFound(ex: UserDeletedException) =
+    fun handleUserDeleted(ex: UserDeletedException) =
         ResponseEntity.status(HttpStatus.UNAUTHORIZED)
             .body(ErrorResponse(ErrorCode.USER_NOT_FOUND, ex.message))
 
@@ -49,4 +49,19 @@ class GlobalExceptionHandler {
         return ResponseEntity.status(HttpStatus.BAD_REQUEST)
             .body(ErrorResponse(ErrorCode.INVALID_DATA, validationMessage))
     }
+
+    @ExceptionHandler(UserNotFoundException::class)
+    fun handleUserNotFound(ex: UserNotFoundException) =
+        ResponseEntity.status(HttpStatus.NOT_FOUND)
+            .body(ErrorResponse(ErrorCode.USER_NOT_FOUND, ex.message))
+
+    @ExceptionHandler(UserAlreadyExistsException::class)
+    fun handleUserAlreadyExists(ex: UserAlreadyExistsException) =
+        ResponseEntity.status(HttpStatus.CONFLICT)
+            .body(ErrorResponse(ErrorCode.USER_ALREADY_EXISTS, ex.message))
+
+    @ExceptionHandler(UserNotApprovedException::class)
+    fun handleUserNotApproved(ex: UserNotApprovedException) =
+        ResponseEntity.status(HttpStatus.FORBIDDEN) // 🛡️ 403 Forbidden für den Warteraum!
+            .body(ErrorResponse(ErrorCode.USER_NOT_APPROVED, ex.message))
 }

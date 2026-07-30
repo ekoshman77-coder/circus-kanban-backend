@@ -32,7 +32,8 @@ fun CreateNoteDto.toEntityWithoutId() = NoteEntity (
     userId = this.userId,
     isInCalculation = this.isInCalculation,
     temperature = this.temperature,
-    weatherCode = this.weatherCode
+    weatherCode = this.weatherCode,
+    departmentId = this.departmentId
 )
 
 fun CreateNoteDto.toNewEntity() = this.toEntityWithoutId()

@@ -5,6 +5,7 @@ import jakarta.servlet.http.HttpServletRequest
 import jakarta.servlet.http.HttpServletResponse
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
+import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity
 import org.springframework.security.config.annotation.web.builders.HttpSecurity
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder
@@ -22,6 +23,7 @@ import java.util.function.Supplier
 
 @Configuration
 @EnableWebSecurity
+@EnableMethodSecurity
 class SecurityConfig {
 
     @Bean
@@ -86,26 +88,6 @@ class SecurityConfig {
         return http.build()
     }
 }
-
-/**
- * Custom CSRF handler that processes tokens in plaintext (without XOR encryption).
- * This perfectly matches the token format sent by modern frontend frameworks like Angular.
- */
-//private class PlaintextCsrfTokenRequestHandler : CsrfTokenRequestHandler {
-//    override fun handle(
-//        request: HttpServletRequest,
-//        response: HttpServletResponse,
-//        csrfToken: Supplier<CsrfToken>
-//    ) {
-//        // Wir holen das echte Token aus Spring Security
-//        val token = csrfToken.get()
-//
-//        // Wir legen es OHNE XOR-Verschlüsselung als reines Text-Attribut in den Request.
-//        // Spring Security nutzt diese Attribute später, um sie mit dem HTTP-Header zu vergleichen.
-//        request.setAttribute(CsrfToken::class.java.name, token)
-//        request.setAttribute(token.parameterName, token)
-//    }
-//}
 
 /**
  * 🎪 UNSER EXPERIMENTELLES CHIFFRE-LABOR ("Kinderverschlüsselung" Buchstabe + 1)

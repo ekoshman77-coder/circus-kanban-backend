@@ -7,7 +7,9 @@ import com.backend.todo_api.data.repository.UserRepository
 import com.backend.todo_api.data.repository.CoffeeAccountRepository
 import com.backend.todo_api.data.repository.ProjectMemberRepository
 import com.backend.todo_api.dto.UserResponseDto
-import com.backend.todo_api.dto.ProjectMemberDto // 🚀 UNSER NEUES DTO HIER REIN
+import com.backend.todo_api.dto.ProjectMemberDto
+import com.backend.todo_api.dto.entityToUserResponseDto
+import com.backend.todo_api.exceptions.UserNotFoundException
 import com.backend.todo_api.exceptions.ProjectNotFoundException
 import com.backend.todo_api.exceptions.TeamValidationException
 import org.springframework.stereotype.Service
@@ -18,11 +20,11 @@ class ProjectTeamService(
     private val projectRepository: ProjectRepository,
     private val userRepository: UserRepository,
     private val coffeeAccountRepository: CoffeeAccountRepository,
-    private val projectMemberRepository: ProjectMemberRepository
+    private val projectMemberRepository: ProjectMemberRepository,
 ) {
 
     /**
-     * 📥 Holt alle Teammitglieder eines Projekts inklusive ihrer echten Rolle aus der Zwischentabelle
+     * 📥 Holt alle Teammitglieder eines Projekts inklusive ihrer echten Rolle
      */
     @Transactional(readOnly = true)
     fun getMembersForProject(projectId: String): List<ProjectMemberDto> {
@@ -33,27 +35,16 @@ class ProjectTeamService(
             val user = membership.user
             val coffeeAccount = coffeeAccountRepository.findById(user.id).orElse(null)
 
-            val userDto = UserResponseDto(
-                id = user.id,
-                firstName = user.firstName,
-                lastName = user.lastName,
-                username = user.username,
-                coffeeBalance = coffeeAccount?.balance ?: 0f,
-                role = coffeeAccount?.role ?: "",
-                emoji = coffeeAccount?.emoji ?: "",
-                projectIds = user.projectMemberships.map { it.project.id }
-            )
-
-            // 🌟 Wir verheiraten das UserResponseDto mit der echten projectRole aus der DB-Entity!
+            // 🚀 Wunderschön sauber dank deiner entityToUserResponseDto Methode!
             ProjectMemberDto(
-                user = userDto,
-                projectRole = membership.role // OWNER, DEVELOPER, etc.
+                user = entityToUserResponseDto(user, coffeeAccount),
+                projectRole = membership.role
             )
         }
     }
 
     /**
-     * 🌍 Holt alle User des Systems (Wartebank) und verpasst ihnen im DTO die Rolle "NONE"
+     * 🌍 Holt alle User des Systems (Wartebank)
      */
     @Transactional(readOnly = true)
     fun getAllGlobalUsersWithProjects(): List<ProjectMemberDto> {
@@ -62,27 +53,16 @@ class ProjectTeamService(
         return allUsers.map { user ->
             val coffeeAccount = coffeeAccountRepository.findById(user.id).orElse(null)
 
-            val userDto = UserResponseDto(
-                id = user.id,
-                firstName = user.firstName,
-                lastName = user.lastName,
-                username = user.username,
-                coffeeBalance = coffeeAccount?.balance ?: 0f,
-                role = coffeeAccount?.role ?: "",
-                emoji = coffeeAccount?.emoji ?: "",
-                projectIds = user.projectMemberships.map { it.project.id }
-            )
-
-            // 🌍 Weil sie auf der globalen Wartebank sitzen, ist die Projekt-Rolle hier künstlich "NONE"
+            // 🚀 Hier lag gestern das Problem! Jetzt zieht die Abteilung & isApproved sauber mit!
             ProjectMemberDto(
-                user = userDto,
+                user = entityToUserResponseDto(user, coffeeAccount),
                 projectRole = "NONE"
             )
         }
     }
 
     /**
-     * ➕ Weist einen User einem Projekt mit einer spezifischen Rolle zu
+     * ➕ Weist einen User einem Projekt zu
      */
     @Transactional
     fun assignUserToProject(projectId: String, userId: String, role: String): ProjectMemberDto {
@@ -92,49 +72,34 @@ class ProjectTeamService(
         }
 
         val existingMembership = projectMemberRepository.findByUserIdAndProjectId(userId, projectId)
-
-        // 💡 Wir deklarieren eine Variable für den User, den wir am Ende fürs DTO brauchen
         val finalUser: UserEntity
 
         if (existingMembership != null) {
             existingMembership.role = roleFromFrontend
             projectMemberRepository.save(existingMembership)
-            finalUser = existingMembership.user // Hier haben wir den User direkt!
+            finalUser = existingMembership.user
         } else {
-            // Hier laden wir project und user das EINZIGE Mal aus den Repositories
             val project = projectRepository.findById(projectId)
                 .orElseThrow { ProjectNotFoundException("Projekt mit ID $projectId nicht gefunden!") }
             val user = userRepository.findById(userId)
                 .orElseThrow { UserNotFoundException("User mit ID $userId nicht gefunden!") }
 
-            val newMembership = ProjectMemberEntity(
-                project = project,
-                user = user,
-                role = roleFromFrontend
-            )
+            val newMembership = ProjectMemberEntity(project = project, user = user, role = roleFromFrontend)
             projectMemberRepository.save(newMembership)
-            finalUser = user // Hier nutzen wir die lokal geladene Variable einfach weiter!
+            finalUser = user
         }
 
-        // ☕ Kaffeekonto-Logik bleibt absolut gleich
         val coffeeAccount = coffeeAccountRepository.findById(finalUser.id).orElse(null)
 
-        val userDto = UserResponseDto(
-            id = finalUser.id,
-            firstName = finalUser.firstName,
-            lastName = finalUser.lastName,
-            username = finalUser.username,
-            coffeeBalance = coffeeAccount?.balance ?: 0f,
-            role = coffeeAccount?.role ?: "",
-            emoji = coffeeAccount?.emoji ?: "",
-            projectIds = finalUser.projectMemberships.map { it.project.id }
+        // 🚀 Verheiratung über deine neue Methode!
+        return ProjectMemberDto(
+            user = entityToUserResponseDto(finalUser, coffeeAccount),
+            projectRole = roleFromFrontend
         )
-
-        return ProjectMemberDto(user = userDto, projectRole = roleFromFrontend)
     }
 
     /**
-     * 🗑️ Entfernt den User aus der Zwischentabelle eines Projekts
+     * 🗑️ Entfernt den User aus dem Projekt
      */
     @Transactional
     fun removeUserFromProject(projectId: String, memberId: String) {
@@ -150,7 +115,7 @@ class ProjectTeamService(
     }
 
     /**
-     * ☕ Bleibt exakt wie vorher – aktualisiert nur das Kaffeekonto global
+     * ☕ Aktualisiert das Kaffeekonto eines Users weltweit
      */
     @Transactional
     fun updateCoffeeAccount(userId: String, balance: Float, role: String, emoji: String): UserResponseDto {
@@ -164,15 +129,7 @@ class ProjectTeamService(
 
         val user = userRepository.findById(userId).get()
 
-        return UserResponseDto(
-            id = user.id,
-            firstName = user.firstName,
-            lastName = user.lastName,
-            username = user.username,
-            coffeeBalance = account.balance,
-            role = account.role,
-            emoji = account.emoji,
-            projectIds = user.projectMemberships.map { it.project.id }
-        )
+        // 🚀 Nutzt deine neue Methode für das Kaffeekonto-Update!
+        return entityToUserResponseDto(user, account)
     }
 }

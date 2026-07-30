@@ -56,6 +56,7 @@ class ProjectService(
         existingProject.area = dto.area
         existingProject.content = dto.content
         existingProject.status = dto.status
+        existingProject.departmentId = dto.departmentId
 
         // 4. Meilensteine neu mappen...
         dto.milestones.forEach { mDto ->
@@ -94,7 +95,8 @@ class ProjectService(
             title = dto.title,
             area = dto.area,
             content = dto.content,
-            status = dto.status
+            status = dto.status,
+            departmentId = dto.departmentId
         )
 
         // ❌ HIER WAR DIE FEHLERQUELLE: Die gesamte Schleife, die blind "DEVELOPER"
