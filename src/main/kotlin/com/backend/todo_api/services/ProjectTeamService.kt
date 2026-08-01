@@ -1,10 +1,12 @@
 package com.backend.todo_api.services
 
+import com.backend.todo_api.constants.AppConstants.ADMIN_DEPARTMENT_NAME
 import com.backend.todo_api.data.entity.ProjectMemberEntity
 import com.backend.todo_api.data.entity.UserEntity
 import com.backend.todo_api.data.repository.ProjectRepository
 import com.backend.todo_api.data.repository.UserRepository
 import com.backend.todo_api.data.repository.CoffeeAccountRepository
+import com.backend.todo_api.data.repository.DepartmentRepository
 import com.backend.todo_api.data.repository.ProjectMemberRepository
 import com.backend.todo_api.dto.UserResponseDto
 import com.backend.todo_api.dto.ProjectMemberDto
@@ -12,6 +14,7 @@ import com.backend.todo_api.dto.entityToUserResponseDto
 import com.backend.todo_api.exceptions.UserNotFoundException
 import com.backend.todo_api.exceptions.ProjectNotFoundException
 import com.backend.todo_api.exceptions.TeamValidationException
+import com.backend.todo_api.exceptions.UserDepartmentNotFoundException
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 
@@ -21,6 +24,7 @@ class ProjectTeamService(
     private val userRepository: UserRepository,
     private val coffeeAccountRepository: CoffeeAccountRepository,
     private val projectMemberRepository: ProjectMemberRepository,
+    private val departmentRepository: DepartmentRepository
 ) {
 
     /**
@@ -44,16 +48,32 @@ class ProjectTeamService(
     }
 
     /**
-     * 🌍 Holt alle User des Systems (Wartebank)
+     * 🌍 Holt den Pool an auswählbaren Usern – strikt gefiltert nach der Abteilung des anfragenden Users!
      */
     @Transactional(readOnly = true)
-    fun getAllGlobalUsersWithProjects(): List<ProjectMemberDto> {
-        val allUsers = userRepository.findAll()
+    fun getAllGlobalUsersWithProjects(requestingUserId: String): List<ProjectMemberDto> {
+        // 1. Den anfragenden User holen, um seine Abteilung zu ermitteln
+        val requestingUser = userRepository.findById(requestingUserId)
+            .orElseThrow { UserNotFoundException("User mit ID $requestingUserId nicht gefunden!") }
 
-        return allUsers.map { user ->
-            val coffeeAccount = coffeeAccountRepository.findById(user.id).orElse(null)
+        val userDeptId = requestingUser.departmentId
+        if (userDeptId.isNullOrBlank()) {
+            return emptyList() // Nicht freigeschaltete User sehen niemanden
+        }
 
-            // 🚀 Hier lag gestern das Problem! Jetzt zieht die Abteilung & isApproved sauber mit!
+        val userDepartment = departmentRepository.findById(userDeptId)
+            .orElseThrow{ UserDepartmentNotFoundException("Benutzerbteilung ist veraltet") }
+        var departmentUsers =
+            if (userDepartment.name == ADMIN_DEPARTMENT_NAME) {
+                userRepository.findAll()
+            } else {
+            // 2. NUR die freigeschalteten Kollegen aus derselben Abteilung holen!
+                userRepository.findByIsApprovedAndDepartmentId(true, userDeptId)
+            }
+
+            return departmentUsers.map { user ->
+                val coffeeAccount = coffeeAccountRepository.findById(user.id).orElse(null)
+
             ProjectMemberDto(
                 user = entityToUserResponseDto(user, coffeeAccount),
                 projectRole = "NONE"

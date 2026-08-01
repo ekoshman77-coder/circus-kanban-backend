@@ -34,14 +34,25 @@ class NoteService(private val noteRepository: NoteRepository,
         return entity.toDto()
     }
 
-
-    // 1. GET: Nur noch aktive Notizen (Frontend-Sicht)
+    // Holt nur die relevanten aktiven Notizen für den User
     fun getNotesByUserId(userId: String?): List<NoteDto> {
         if (userId == null) return emptyList()
         validateUserExists(userId, userRepository)
 
-        // 🎯 Hier nutzen wir jetzt deine neue Repository-Methode
-        return getAllActiveNotes()
+        // 1. User holen, um die echte Abteilung zu erfahren
+        val user = userRepository.findById(userId)
+            .orElseThrow { IllegalArgumentException("User mit ID $userId nicht gefunden!") }
+
+        val userDeptId = user.departmentId
+
+        // 2. Sicherheits-Check: Ist der User überhaupt schon freigeschaltet/zugewiesen?
+        if (userDeptId.isNullOrBlank()) {
+            // Wenn er eingeloggt ist, aber keine Abteilung hat, ist er noch nicht freigeschaltet!
+            return emptyList()
+        }
+
+        // 3. Direkt das Repository feuern (holt Global + seine Abteilung, z.B. "DIRECTION")
+        return noteRepository.findActiveGlobalAndDepartmentNotes(userDeptId).map { it.toDto() }
     }
 
     /**

@@ -24,7 +24,8 @@ class NoteController(private val noteService: NoteService) {
 
     @GetMapping
     fun getNotes(@RequestParam(required = false) userId: String?): ResponseEntity<List<NoteDto>> {
-        return ResponseEntity.ok(noteService.getNotesByUserId(userId))
+        val notes = noteService.getNotesByUserId(userId)
+        return ResponseEntity.ok(notes)
     }
 
     @GetMapping("/{id}")

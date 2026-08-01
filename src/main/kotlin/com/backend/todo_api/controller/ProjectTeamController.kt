@@ -16,12 +16,14 @@ class ProjectTeamController(
 
     @GetMapping
     fun getProjectMembers(
+        @RequestParam userId: String,
         @RequestParam(required = false) projectId: String?
-    ): ResponseEntity<List<ProjectMemberDto>> { // 👈 Gibt jetzt immer ProjectMemberDto zurück!
+         // Zwingend erforderlich für die Abteilungstrennung!
+    ): ResponseEntity<List<ProjectMemberDto>> {
 
         val members = if (projectId.isNullOrBlank()) {
-            // 🌍 Fall A: Globaler Pool (Alle User im System bekommen 'NONE' als Projekt-Rolle)
-            projectTeamService.getAllGlobalUsersWithProjects()
+            // 🌍 Fall A: Abteilungs-Pool (Nur Kollegen aus der eigenen Abteilung)
+            projectTeamService.getAllGlobalUsersWithProjects(userId)
         } else {
             // 📂 Fall B: Echte Projektmitglieder inklusive ihrer echten Rolle aus der DB!
             projectTeamService.getMembersForProject(projectId)

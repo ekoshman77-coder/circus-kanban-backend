@@ -14,12 +14,13 @@ import org.springframework.web.bind.annotation.*
 class ProjectController(private val projectService: ProjectService) {
 
     @GetMapping
-    fun getProjects(@RequestParam(required = false) userId: String?): ResponseEntity<List<ProjectDto>> {
+    fun getProjects(@RequestParam(required = true) userId: String?): ResponseEntity<List<ProjectDto>> {
+        // Reicht die userId an den überarbeiteten Service weiter
         val projects = projectService.getProjectsByWithUser(userId)
         return ResponseEntity.ok(projects)
     }
 
-    // 🔍 Endpunkt für die Einzelabfrage eines Projekts
+    // Endpunkt für die Einzelabfrage eines Projekts
     @GetMapping("/{id}")
     fun getProjectById(@PathVariable id: String): ResponseEntity<ProjectDto> {
         return ResponseEntity.ok(projectService.getProjectById(id))

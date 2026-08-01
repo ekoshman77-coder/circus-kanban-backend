@@ -19,8 +19,21 @@ class ProjectService(
 ) {
 
     fun getProjectsByWithUser(userId: String?): List<ProjectDto> {
-        return if (userId == null) projectRepository.findAll().map { it.toDto() }
-        else projectRepository.findByUserId(userId).map { it.toDto() }
+        if (userId == null) return emptyList()
+
+        // 1. User aus der DB holen, um seine echte departmentId auszulesen
+        val user = userRepository.findById(userId)
+            .orElseThrow { IllegalArgumentException("User mit ID $userId nicht gefunden!") }
+
+        val userDeptId = user.departmentId
+
+        // 2. Sicherheits-Check: Ist der User einer Abteilung zugewiesen?
+        if (userDeptId.isNullOrBlank()) {
+            return emptyList() // Noch nicht vom Admin freigeschaltet -> Sieht nichts!
+        }
+
+        // 3. Fallunterscheidung nach Rolle/Abteilung
+        return projectRepository.findByDepartmentIdAndStatusNot(userDeptId, "Zip").map { it.toDto() }
     }
 
     fun getProjectById(id: String): ProjectDto {
@@ -82,9 +95,12 @@ class ProjectService(
 
     @Transactional
     fun deleteProject(id: String) {
-        if (projectRepository.existsById(id)) {
-            projectRepository.deleteById(id)
-        }
+        val project = projectRepository.findById(id)
+            .orElseThrow { RuntimeException("Projekt mit ID $id wurde nicht gefunden.") }
+
+        // 🎯 SOFT DELETE statt hard delete! Die KI behält ihre Meilenstein-Daten!
+        project.status = "Zip"
+        projectRepository.save(project)
     }
 
     private fun convertToEntity(dto: CreateProjectDto): ProjectEntity {

@@ -53,7 +53,9 @@ fun NoteEntity.toDto() = NoteDto (
     userId = this.userId,
     isInCalculation = this.isInCalculation,
     temperature = this.temperature,
-    weatherCode = this.weatherCode
+    weatherCode = this.weatherCode,
+    departmentId = this.departmentId
+
 )
 
 fun MilestoneDto.toEntity(): MilestoneEntity {
