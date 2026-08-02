@@ -36,10 +36,16 @@ class UserService(
 ) {
 
     // 🔑 Login
+
     fun login(dto: CreateUserDto): UserDto {
         val usernameTrimmed = dto.username.trim()
         val userEntity = userRepository.findByUsernameIgnoreCase(usernameTrimmed)
             ?: throw UserNotFoundException("Dieser Name existiert nicht.")
+
+        // 🛡️ NEU: Wenn der User archiviert ist, darf er sich nicht mehr einloggen
+        if (userEntity.isArchived) {
+            throw UserNotFoundException("Dieser Account wurde archiviert und ist nicht mehr aktiv.")
+        }
 
         if (!passwordEncoder.matches(dto.password, userEntity.password)) {
             throw RuntimeException("Falsches Passwort!")
@@ -49,7 +55,6 @@ class UserService(
             throw UserNotApprovedException("Dein Account befindet sich noch im Warteraum. Ein Admin muss dich erst freischalten.")
         }
 
-        // 🚀 Nutzt deine neue Methode!
         return copyToUserDto(userEntity, UserDto())
     }
 
@@ -71,9 +76,6 @@ class UserService(
             assignedDepartmentId = adminDept?.id
             approvedStatus = true
             println("👑 Ur-Admin Registrierung erkannt! Gewählte Abteilung: ${AppConstants.ADMIN_DEPARTMENT_NAME}.")
-        } else {
-            approvedStatus = false
-            assignedDepartmentId = null
         }
 
         val hashedPassword = passwordEncoder.encode(dto.password)
@@ -81,7 +83,7 @@ class UserService(
             username = usernameTrimmed,
             firstName = dto.firstName,
             lastName = dto.lastName,
-            password = if (hashedPassword == null)  "" else hashedPassword,
+            password = if (hashedPassword == null) "" else hashedPassword,
             departmentId = assignedDepartmentId,
             isApproved = approvedStatus
         ))
@@ -102,7 +104,6 @@ class UserService(
         )
         coffeeAccountRepository.save(defaultCoffeeAccount)
 
-        // 🚀 Nutzt deine neue Methode!
         return copyToUserDto(savedEntity, UserDto())
     }
 
@@ -110,6 +111,14 @@ class UserService(
     fun updateUser(id: String, dto: UserDto): UserDto {
         val userEntity = userRepository.findById(id).orElseThrow {
             UserNotFoundException("Benutzer mit der ID $id wurde nicht gefunden.")
+        }
+
+        // 🛡️ NEU: Änderungen an archivierten Benutzern blockieren
+        if (userEntity.isArchived) {
+            throw ResponseStatusException(
+                HttpStatus.CONFLICT,
+                "Operation abgelehnt: Archivierte Benutzer können nicht aktualisiert werden!"
+            )
         }
 
         if (userEntity.isApproved != dto.isApproved) {
@@ -122,7 +131,6 @@ class UserService(
         userEntity.lastName = dto.lastName
         val updatedUser = userRepository.save(userEntity)
 
-        // 🚀 Nutzt deine neue Methode!
         return copyToUserDto(updatedUser, UserDto())
     }
 
@@ -132,35 +140,51 @@ class UserService(
             UserNotFoundException("Benutzer mit der ID $id wurde nicht gefunden.")
         }
 
+        if (userEntity.isArchived) return
+
+        // 1. Zuweisungen bei Team-Todos aufheben
         val assignedTodos = todoRepository.findByAssignedUserId(id)
         assignedTodos.forEach { todo -> todo.assignedUserId = null }
         todoRepository.saveAll(assignedTodos)
 
+        // 2. Eigene private Todos archivieren (Nutzt das vorhandene isArchived in Todos!)
+        val privateTodos = todoRepository.findByUserId(id)
+        privateTodos.forEach { todo -> todo.isArchived = true }
+        todoRepository.saveAll(privateTodos)
+
+        // 3. Meilensteine wieder freigeben
         val assignedMilestones = milestoneRepository.findByAssignedUserId(id)
         assignedMilestones.forEach { milestone -> milestone.assignedUser = null }
         milestoneRepository.saveAll(assignedMilestones)
 
+        // 4. Eigene Projekte auf Dummy-User umschreiben
         val createdProjects = projectRepository.findByUserId(id)
         createdProjects.forEach { project -> project.userId = "DELETED_USER" }
         projectRepository.saveAll(createdProjects)
 
+        // 5. Aus allen Projekten als aktives Mitglied austreten
         ArrayList(userEntity.projectMemberships).forEach { membership ->
             membership.project.removeTeamMember(userEntity)
         }
         userEntity.projectMemberships.clear()
 
+        // 6. Planner Settings löschen (kann weg, da 1:1 Kopplung)
         plannerSettingsRepository.deleteById(id)
-        userRepository.delete(userEntity)
+
+        // 🎯 7. Der Soft-Delete-Clou: Status auf archiviert setzen
+        userEntity.isArchived = true
+        userEntity.isApproved = false // Aus dem Warteraum/Board entfernen
+        userRepository.save(userEntity)
     }
 
     fun getApprovedUsers(): List<UserDto> {
         // 🚀 Nutzt deine neue Methode via map!
-        return userRepository.findByIsApproved(true).map { copyToUserDto(it, UserDto()) }
+        return userRepository.findByIsApprovedAndIsArchivedFalse(true).map { copyToUserDto(it, UserDto()) }
     }
 
     fun getUnapprovedUsers(): List<UserDto> {
         // 🚀 Nutzt deine neue Methode via map!
-        return userRepository.findByIsApproved(false).map { copyToUserDto(it, UserDto()) }
+        return userRepository.findByIsApprovedAndIsArchivedFalse(false).map { copyToUserDto(it, UserDto()) }
     }
 
     @Transactional
@@ -174,7 +198,6 @@ class UserService(
 
         val savedUser = userRepository.save(userEntity)
 
-        // 🚀 Nutzt deine neue Methode!
         return copyToUserDto(savedUser, UserDto())
     }
 
@@ -183,7 +206,6 @@ class UserService(
             .orElseThrow{ UserNotFoundException("Benutzer mit der ID $userId wurde nicht gefunden.") }
         return copyToUserDto(userEntity, UserDto())
     }
-
     // 🛡️ Hilfsmethode für den Security-Stempel
     fun isAdminDepartment(departmentId: String?): Boolean {
         if (departmentId == null) return false

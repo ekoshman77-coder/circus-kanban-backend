@@ -6,8 +6,10 @@ spring:
   jpa:
     hibernate:
       ddl-auto: update
-
-  # Unser 30-Tage-Komfort-Paket
+  session:
+    store-type: jdbc
+    jdbc:
+      initialize-schema: always
   servlet:
     session:
       timeout: 7d
@@ -15,12 +17,12 @@ spring:
         max-age: 7d
 
 bucket4j:
-  enabled: true
+  enabled: false
   filters:
     - name: rate-limit-filter
       url: /api/.*
       rate-limits:
         - bandwidths:
-            - capacity: 10       # 🎯 Reduziert auf maximal 10 Anfragen...
+            - capacity: 10
               time: 1
-              unit: minutes      # 🎯 ...pro Minute.
+              unit: minutes

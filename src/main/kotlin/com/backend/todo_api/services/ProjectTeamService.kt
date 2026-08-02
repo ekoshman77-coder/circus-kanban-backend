@@ -39,7 +39,6 @@ class ProjectTeamService(
             val user = membership.user
             val coffeeAccount = coffeeAccountRepository.findById(user.id).orElse(null)
 
-            // 🚀 Wunderschön sauber dank deiner entityToUserResponseDto Methode!
             ProjectMemberDto(
                 user = entityToUserResponseDto(user, coffeeAccount),
                 projectRole = membership.role
@@ -52,31 +51,26 @@ class ProjectTeamService(
      */
     @Transactional(readOnly = true)
     fun getAllGlobalUsersWithProjects(requestingUserId: String): List<ProjectMemberDto> {
-        // 1. Den anfragenden User holen, um seine Abteilung zu ermitteln
         val requestingUser = userRepository.findById(requestingUserId)
             .orElseThrow { UserNotFoundException("User mit ID $requestingUserId nicht gefunden!") }
 
         val userDeptId = requestingUser.departmentId
         if (userDeptId.isNullOrBlank()) {
-            return emptyList() // Nicht freigeschaltete User sehen niemanden
+            return emptyList()
         }
 
         val userDepartment = departmentRepository.findById(userDeptId)
             .orElseThrow{ UserDepartmentNotFoundException("Benutzerbteilung ist veraltet") }
-        var departmentUsers =
-            if (userDepartment.name == ADMIN_DEPARTMENT_NAME) {
-                userRepository.findAll()
-            } else {
-            // 2. NUR die freigeschalteten Kollegen aus derselben Abteilung holen!
-                userRepository.findByIsApprovedAndDepartmentId(true, userDeptId)
-            }
 
-            return departmentUsers.map { user ->
-                val coffeeAccount = coffeeAccountRepository.findById(user.id).orElse(null)
+        // 🎯 FIX: Nutzt jetzt deine neue kombinierte Methode inklusive IsArchivedFalse-Schutz!
+        val departmentUsers = userRepository.findByIsApprovedAndDepartmentIdAndIsArchivedFalse(true, userDeptId)
+
+        return departmentUsers.map { user ->
+            val coffeeAccount = coffeeAccountRepository.findById(user.id).orElse(null)
 
             ProjectMemberDto(
                 user = entityToUserResponseDto(user, coffeeAccount),
-                projectRole = "NONE"
+            projectRole = "NONE"
             )
         }
     }
@@ -95,6 +89,10 @@ class ProjectTeamService(
         val finalUser: UserEntity
 
         if (existingMembership != null) {
+            // Wenn er schon im Projekt ist, prüfen wir, ob er heimlich archiviert wurde
+            if (existingMembership.user.isArchived) {
+                throw UserNotFoundException("User existiert nicht")
+            }
             existingMembership.role = roleFromFrontend
             projectMemberRepository.save(existingMembership)
             finalUser = existingMembership.user
@@ -104,6 +102,11 @@ class ProjectTeamService(
             val user = userRepository.findById(userId)
                 .orElseThrow { UserNotFoundException("User mit ID $userId nicht gefunden!") }
 
+            // 🛡️ SICHERHEITS-CHECK: Verhindert, dass archivierte User neuen Projekten hinzugefügt werden
+            if (user.isArchived) {
+                throw UserNotFoundException("User existiert nicht")
+            }
+
             val newMembership = ProjectMemberEntity(project = project, user = user, role = roleFromFrontend)
             projectMemberRepository.save(newMembership)
             finalUser = user
@@ -111,10 +114,9 @@ class ProjectTeamService(
 
         val coffeeAccount = coffeeAccountRepository.findById(finalUser.id).orElse(null)
 
-        // 🚀 Verheiratung über deine neue Methode!
         return ProjectMemberDto(
             user = entityToUserResponseDto(finalUser, coffeeAccount),
-            projectRole = roleFromFrontend
+        projectRole = roleFromFrontend
         )
     }
 
@@ -149,7 +151,26 @@ class ProjectTeamService(
 
         val user = userRepository.findById(userId).get()
 
-        // 🚀 Nutzt deine neue Methode für das Kaffeekonto-Update!
+        // 🛡️ Sicherheitswarnung, falls Admins das Kaffeekonto von Toten bearbeiten wollen
+        if (user.isArchived) {
+            throw UserNotFoundException("User existiert nicht")
+        }
+
         return entityToUserResponseDto(user, account)
+    }
+
+    @Transactional(readOnly = true)
+    fun getAllUsersForAdminBoard(): List<ProjectMemberDto> {
+        // Holt alle registrierten und freigeschalteten Mitarbeiter der gesamten Firma
+        val allApprovedUsers = userRepository.findByIsArchivedFalse()
+
+        // Falls deine findByIsApproved Methode anders heißt, passe sie kurz an (z.B. findAll())
+        return allApprovedUsers.map { user ->
+            val coffeeAccount = coffeeAccountRepository.findById(user.id).orElse(null)
+            ProjectMemberDto(
+                user = entityToUserResponseDto(user, coffeeAccount),
+                projectRole = "NONE"
+            )
+        }
     }
 }

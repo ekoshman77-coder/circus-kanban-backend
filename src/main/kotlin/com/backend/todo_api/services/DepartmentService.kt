@@ -64,7 +64,7 @@ class DepartmentService(
             throw RuntimeException("Die System-Abteilung '${AppConstants.ADMIN_DEPARTMENT_NAME}' kann nicht gelöscht werden!")
         }
 
-        val usersInDepartment = userRepository.findByIsApproved(true).filter { it.departmentId == id }
+        val usersInDepartment = userRepository.findByIsApprovedAndDepartmentIdAndIsArchivedFalse(true, departmentId = department.id)
         if (usersInDepartment.isNotEmpty()) {
             throw RuntimeException("Die Abteilung kann nicht gelöscht werden, da ihr noch Mitarbeiter zugeordnet sind.")
         }

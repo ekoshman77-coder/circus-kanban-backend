@@ -10,13 +10,16 @@ import org.springframework.stereotype.Repository
 @Repository
 interface UserRepository : JpaRepository<UserEntity, String> {
 
-    // 🔍 Spring generiert automatisch: "SELECT * FROM users WHERE LOWER(username) = LOWER(?)"
     fun findByUsernameIgnoreCase(username: String): UserEntity?
 
-    // 🔍 Für den Warteraum: Holt alle User, die auf Freischaltung warten (isApproved = false)
-    // Oder alle aktiven User (isApproved = true)
-    fun findByIsApproved(isApproved: Boolean): List<UserEntity>
+    // Nur aktive User (nicht archiviert) für den Warteraum oder das Board holen
+    fun findByIsApprovedAndIsArchivedFalse(isApproved: Boolean): List<UserEntity>
 
-    // 🔍 Falls der Admin später gezielt nach unbestätigten Usern in einer bestimmten Abteilung sucht
-    fun findByIsApprovedAndDepartmentId(isApproved: Boolean, departmentId: String?): List<UserEntity>
+    fun findByIsApprovedAndDepartmentIdAndIsArchivedFalse(isApproved: Boolean, departmentId: String?): List<UserEntity>
+
+    //Prüfen, ob ein Benutzername existiert und NICHT archiviert ist (für Login)
+    fun findByUsernameIgnoreCaseAndIsArchivedFalse(username: String): UserEntity?
+
+    // 🔍 Holt einfach JEDEN User, der nicht archiviert ist (egal ob approved oder nicht)
+    fun findByIsArchivedFalse(): List<UserEntity>
 }

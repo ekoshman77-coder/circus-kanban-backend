@@ -20,52 +20,42 @@ import org.springframework.security.authentication.UsernamePasswordAuthenticatio
 import org.springframework.security.core.authority.SimpleGrantedAuthority
 import org.springframework.security.core.context.SecurityContextHolder
 import org.springframework.security.web.context.HttpSessionSecurityContextRepository
-import org.springframework.security.web.csrf.CsrfToken
 import org.springframework.validation.annotation.Validated
 import org.springframework.web.bind.annotation.*
 
 @RestController
 @RequestMapping("/api/users")
 @CrossOrigin(origins = ["http://localhost:4200"])
-@Tag(name = "User-Controller", description = "Endpunkte für Login und Registrierung von Benutzern")
+@Tag(name = "User-Controller", description = "Endpunkte für Registrierung, Login, Profilverwaltung und Freischaltung von Benutzern")
 class UserController(private val userService: UserService) {
 
     @PostMapping("/login")
-    @Operation(summary = "Benutzer einloggen", description = "Prüft, ob der Name existiert und gibt den User samt ID zurück.")
+    @Operation(summary = "Benutzer einloggen", description = "Prüft die Anmeldedaten eines Benutzers, bestimmt dessen Rolle und baut die Session auf, sofern das Konto freigeschaltet und nicht archiviert ist.")
     @ApiResponses(value = [
         ApiResponse(responseCode = "200", description = "Erfolgreich eingeloggt"),
         ApiResponse(responseCode = "400", description = "Ungültige Eingabe (Name leer)"),
-        ApiResponse(responseCode = "404", description = "Benutzername existiert nicht")
+        ApiResponse(responseCode = "404", description = "Benutzername existiert nicht oder Account wurde archiviert")
     ])
     fun loginUser(
         @Validated(OnRegisterOrLogin::class) @RequestBody dto: CreateUserDto,
-                  request: HttpServletRequest
+        request: HttpServletRequest
     ): ResponseEntity<Any> {
         if (dto.username.isBlank()) {
             return ResponseEntity.badRequest().body(mapOf("error" to "Name darf nicht leer sein!"))
         }
         return try {
-            // 1. Der normale Login läuft durch und liefert das UserDto
             val userDto = userService.login(dto)
-
-            // 2. Wir nutzen unsere neue Methode im Service, um die Rolle zu bestimmen
             val isUserAdmin = userService.isAdminDepartment(userDto.departmentId)
             val roleName = if (isUserAdmin) "ROLE_ADMIN" else "ROLE_USER"
-
-            // 3. Wir packen die Rolle in eine Liste für Spring Security
             val authorities = listOf(SimpleGrantedAuthority(roleName))
-
-            // 4. Wir erstellen das Spring-Security-Ticket
             val authentication = UsernamePasswordAuthenticationToken(userDto.username, null, authorities)
 
-            // 5. Wir drücken den Stempel in den SecurityContext
             val context = SecurityContextHolder.createEmptyContext()
             context.authentication = authentication
             SecurityContextHolder.setContext(context)
 
             val session = request.getSession(true)
             session.setAttribute(HttpSessionSecurityContextRepository.SPRING_SECURITY_CONTEXT_KEY, context)
-            // 6. Wir geben das UserDto wie gewohnt an das Frontend zurück
             ResponseEntity.ok(userDto)
         } catch (e: UserNotFoundException) {
             ResponseEntity.status(HttpStatus.NOT_FOUND).body(mapOf("error" to e.message))
@@ -86,35 +76,25 @@ class UserController(private val userService: UserService) {
             return ResponseEntity.badRequest().body(mapOf("error" to "Name darf nicht leer sein!"))
         }
         return try {
-            // 1. Der normale Registrierungsprozess läuft im Service
             val userDto = userService.register(dto)
-
-            // 🚀 NEU: HIER KOMMT DER SICHERHEITSSTEMPEL AUCH BEI DER REGISTRIERUNG HIN!
-            // 2. Wir prüfen, ob der frisch registrierte User Admin ist (trifft nur auf den Ur-Admin zu!)
             val isUserAdmin = userService.isAdminDepartment(userDto.departmentId)
             val roleName = if (isUserAdmin) "ROLE_ADMIN" else "ROLE_USER"
-
-            // 3. Rolle verpacken
             val authorities = listOf(SimpleGrantedAuthority(roleName))
-
-            // 4. Spring-Security-Ticket erstellen
             val authentication = UsernamePasswordAuthenticationToken(userDto.username, null, authorities)
 
-            // 5. Stempel in den SecurityContext drücken
             val context = SecurityContextHolder.createEmptyContext()
             context.authentication = authentication
             SecurityContextHolder.setContext(context)
 
-            // 🎯 HIER WIRD DIE SESSION FÜR DEN UR-ADMIN AKTIVIERT!
-            // Da normale User zu diesem Zeitpunkt noch 'isApproved = false' haben und in keiner
-            // Admin-Abteilung sind, schadet es nicht. Aber für den Ur-Admin erstellen wir das Schließfach!
+            // 🛠️ FIX: Session für ALLE registrierten User erstellen, damit das Warteraum-Polling funktioniert!
+            val session = request.getSession(true)
+            session.setAttribute(HttpSessionSecurityContextRepository.SPRING_SECURITY_CONTEXT_KEY, context)
             if (isUserAdmin) {
-                val session = request.getSession(true)
-                session.setAttribute(HttpSessionSecurityContextRepository.SPRING_SECURITY_CONTEXT_KEY, context)
                 println("🚀 [Security] Session für Ur-Admin '${userDto.username}' bei Registrierung erstellt!")
+            } else {
+                println("⏳ [Security] Session für wartenden User '${userDto.username}' erstellt (Warteraum-Polling aktiv).")
             }
 
-            // 6. Antwort zurückgeben
             ResponseEntity.status(HttpStatus.CREATED).body(userDto)
         } catch (e: UserAlreadyExistsException) {
             ResponseEntity.status(HttpStatus.CONFLICT).body(mapOf("error" to e.message))
@@ -122,17 +102,17 @@ class UserController(private val userService: UserService) {
     }
 
     @PutMapping("/profile/{id}")
-    @Operation(summary = "Benutzerprofil aktualisieren", description = "Aktualisiert Vorname und Nachname eines bestehenden Users unter einem separaten Pfad.")
+    @Operation(summary = "Benutzerprofil aktualisieren", description = "Aktualisiert Vorname und Nachname eines bestehenden aktiven Benutzers. Archivierte Benutzer werden blockiert.")
     @ApiResponses(value = [
         ApiResponse(responseCode = "200", description = "Profil erfolgreich aktualisiert"),
-        ApiResponse(responseCode = "404", description = "Benutzer-ID nicht gefunden")
+        ApiResponse(responseCode = "404", description = "Benutzer-ID nicht gefunden"),
+        ApiResponse(responseCode = "409", description = "Änderungen an archivierten Benutzern nicht erlaubt")
     ])
     fun updateProfile(
         @PathVariable id: String,
         @Validated(OnUpdate::class) @RequestBody dto: UserDto
     ): ResponseEntity<Any> {
         return try {
-            // Der Service ist zum Glück noch da und unversehrt!
             val updatedUser = userService.updateUser(id, dto)
             ResponseEntity.ok(updatedUser)
         } catch (e: UserNotFoundException) {
@@ -141,19 +121,16 @@ class UserController(private val userService: UserService) {
     }
 
     @DeleteMapping("/{id}")
-    @Operation(summary = "Benutzer global löschen", description = "Löscht den Benutzer global aus dem System und bereinigt alle Abhängigkeiten (Todos, Meilensteine, Projekte).")
+    @PreAuthorize("hasRole('ADMIN')")
+    @Operation(summary = "Benutzer archivieren (Soft-Delete)", description = "Löscht den Benutzer nicht physisch, sondern markiert ihn als archiviert. Private Todos werden archiviert, offene Team-Zuweisungen entkoppelt.")
     @ApiResponses(value = [
-        ApiResponse(responseCode = "204", description = "Benutzer erfolgreich gelöscht"),
+        ApiResponse(responseCode = "204", description = "Benutzer erfolgreich archiviert"),
         ApiResponse(responseCode = "404", description = "Benutzer-ID nicht gefunden")
     ])
     fun deleteUser(@PathVariable id: String): ResponseEntity<Any> {
         return try {
-            println("🗑️ [Backend-Controller] DELETE-Request erhalten für User-ID: $id")
-
-            // 🚀 Ruft die fleißige Methode im Service auf
+            println("🗑️ [Backend-Controller] Soft-DELETE-Request erhalten für User-ID: $id")
             userService.deleteUser(id)
-
-            // 204 No Content ist perfekt für erfolgreiche Löschanfragen
             ResponseEntity.noContent().build()
         } catch (e: UserNotFoundException) {
             ResponseEntity.status(HttpStatus.NOT_FOUND).body(mapOf("error" to e.message))
@@ -162,42 +139,37 @@ class UserController(private val userService: UserService) {
 
     @GetMapping("/unapproved")
     @PreAuthorize("hasRole('ADMIN')")
-    @Operation(summary = "Warteraum abrufen")
+    @Operation(summary = "Warteraum abrufen", description = "Liefert eine Liste aller unbestätigten Benutzer zurück, die noch auf ihre Freischaltung warten (archivierte Benutzer ausgeschlossen).")
     fun getUnapprovedUsers(): ResponseEntity<Any> {
         return ResponseEntity.ok(userService.getUnapprovedUsers())
     }
 
     @GetMapping("/approved")
     @PreAuthorize("hasRole('ADMIN')")
-    @Operation(summary = "Aktive Belegschaft abrufen")
+    @Operation(summary = "Aktive Belegschaft abrufen", description = "Liefert eine Liste aller freigeschalteten, voll funktionsfähigen Mitarbeiter (archivierte Benutzer ausgeschlossen).")
     fun getApprovedUsers(): ResponseEntity<Any> {
         return ResponseEntity.ok(userService.getApprovedUsers())
     }
 
     @PostMapping("/{userId}/approve")
-    @PreAuthorize("hasRole('ADMIN')") // 🛡️ Garantiert, dass NUR der echte Admin hier reinkommt!
-    @Operation(summary = "User freischalten und Abteilung zuweisen")
+    @PreAuthorize("hasRole('ADMIN')")
+    @Operation(summary = "User freischalten und Abteilung zuweisen", description = "Bestätigt das Benutzerkonto im Warteraum und ordnet es einer Abteilung im System zu.")
     fun approveUser(
         @PathVariable userId: String,
         @Validated @RequestBody dto: UserApproveDto
     ): ResponseEntity<Any> {
-        // Da der Admin-Zettel dank unseres getUserStatus-Fixes fest auf dem Klemmbrett bleibt,
-        // geht dieser Aufruf jetzt für JEDE Abteilung (auch IT, Vertrieb etc.) fehlerfrei durch!
         return ResponseEntity.ok(userService.approveUser(userId, dto))
     }
 
     @GetMapping("/status/{userId}")
-    // RADIKALER FIX: NUR der betroffene User selbst darf diesen Endpunkt aufrufen! Kein Admin!
     @PreAuthorize("authentication.name == @userService.getUserById(#userId).username")
+    @Operation(summary = "Eigenen Freischaltungs-Status pollen", description = "Ermöglicht dem wartenden Client zu prüfen, ob der Account freigeschaltet wurde. Aktualisiert die Sitzung bei Erfolg live.")
     fun getUserStatus(
         @PathVariable userId: String,
         request: HttpServletRequest
-        ): ResponseEntity<UserDto> {
+    ): ResponseEntity<UserDto> {
         val userDto = userService.getUserById(userId)
 
-        // Wenn der User freigeschaltet wurde, aktualisieren wir SEINEN EIGENEN Stempel.
-        // Da wir oben sichergestellt haben, dass hier NUR der User selbst anfragt,
-        // kann absolut kein fremder Zettel mehr überschrieben werden!
         if (userDto.isApproved) {
             val isUserAdmin = userService.isAdminDepartment(userDto.departmentId)
             val roleName = if (isUserAdmin) "ROLE_ADMIN" else "ROLE_USER"
@@ -209,9 +181,6 @@ class UserController(private val userService: UserService) {
             context.authentication = authentication
             SecurityContextHolder.setContext(context)
 
-            // DER SESSION-KLEBER BEIM POLLING!
-            // Sobald isApproved = true ist, bekommt der User hier sein echtes Schließfach auf dem Server.
-            // Damit ist er ab JETZT dauerhaft eingeloggt und kann ins Dashboard springen!
             val session = request.getSession(true)
             session.setAttribute(HttpSessionSecurityContextRepository.SPRING_SECURITY_CONTEXT_KEY, context)
             println("🔄 [Security] Stempel für User '${userDto.username}' live aktualisiert auf: $roleName")
@@ -221,24 +190,17 @@ class UserController(private val userService: UserService) {
     }
 
     @PostMapping("/signout")
-    @Operation(summary = "Benutzer ausloggen", description = "Vernichtet die aktuelle Session auf dem Server komplett.")
+    @Operation(summary = "Benutzer ausloggen", description = "Beendet und zerstört die aktuelle Session auf dem Server vollständig.")
     @ApiResponses(value = [
         ApiResponse(responseCode = "200", description = "Erfolgreich abgemeldet")
     ])
     fun logoutUser(request: HttpServletRequest): ResponseEntity<Any> {
-        // 1. Wir holen die aktuelle Session, falls eine existiert (false = erstelle keine neue)
         val session = request.getSession(false)
-
         if (session != null) {
             println("🗑️ [Security] Session ${session.id} wird per Logout vernichtet!")
-            // 🎯 2. DAS SCHLIESSFACH WIRD SPRENGT: Löscht alle Daten und die Session auf dem Server!
             session.invalidate()
         }
-
-        // 3. Wir wischen das aktuelle Klemmbrett im Thread sauber
         SecurityContextHolder.clearContext()
-
-        // 4. Wir sagen dem Browser, dass alles geklappt hat
         return ResponseEntity.ok(mapOf("message" to "Erfolgreich abgemeldet"))
     }
 }

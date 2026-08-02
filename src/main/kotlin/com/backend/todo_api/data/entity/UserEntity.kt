@@ -41,6 +41,9 @@ class UserEntity(
     @Column(name = "is_approved", nullable = false)
     var isApproved: Boolean = false,
 
+    @Column(name = "is_archived", nullable = false, columnDefinition = "boolean default false")
+    var isArchived: Boolean = false,
+
     @OneToMany(mappedBy = "user", cascade = [CascadeType.ALL], orphanRemoval = true)
     var projectMemberships: MutableList<ProjectMemberEntity> = mutableListOf()
 )

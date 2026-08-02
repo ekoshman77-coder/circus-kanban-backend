@@ -112,8 +112,8 @@ class ProjectSplitterService(
      * LERN-FUNKTION 1: Erfolg verbuchen
      */
     @Transactional
-    fun trackMilestoneSelection(projectTitle: String, milestoneTitle: String, userId: String) {
-        val tokens = AiTextUtil.tokenizeAndClean(projectTitle)
+    fun trackMilestoneSelection(projectTitle: String, projectArea: String, milestoneTitle: String, userId: String) {
+        val tokens = AiTextUtil.tokenizeAndClean("${projectTitle} ${projectArea}")
 
         for (word in tokens) {
             val existingKnowledge = aiKnowledgeRepository.findByUserIdAndKeywordAndMilestoneTitle(userId, word, milestoneTitle)
@@ -139,8 +139,8 @@ class ProjectSplitterService(
      * LERN-FUNKTION 2: Vorschlag ablehnen (Strafbank)
      */
     @Transactional
-    fun trackMilestoneDegradation(projectTitle: String, milestoneTitle: String, userId: String) {
-        val tokens = AiTextUtil.tokenizeAndClean(projectTitle)
+    fun trackMilestoneDegradation(projectTitle: String, projectArea: String, milestoneTitle: String, userId: String) {
+        val tokens = AiTextUtil.tokenizeAndClean("${projectTitle} ${projectArea}")
 
         for (word in tokens) {
             val existingKnowledge = aiKnowledgeRepository.findByUserIdAndKeywordAndMilestoneTitle(userId, word, milestoneTitle)
@@ -170,10 +170,10 @@ class ProjectSplitterService(
     /**
      * Verarbeitet eine Liste von ignorierten Meilensteinen gesammelt beim Speichern.
      */
-    fun trackMultipleMilestoneDegradations(projectTitle: String, milestoneTitles: List<String>, userId: String) {
+    fun trackMultipleMilestoneDegradations(projectTitle: String, projectArea: String, milestoneTitles: List<String>, userId: String) {
         for (milestoneTitle in milestoneTitles) {
             // Wir nutzen einfach unsere optimierte Methode (jetzt mit score - 35)
-            trackMilestoneDegradation(projectTitle, milestoneTitle, userId)
+            trackMilestoneDegradation(projectTitle, projectArea, milestoneTitle, userId)
         }
     }
 }
