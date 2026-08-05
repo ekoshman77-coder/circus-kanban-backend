@@ -21,4 +21,5 @@ interface NoteRepository: JpaRepository<NoteEntity, String> {
         AND (n.departmentId IS NULL OR n.departmentId = :departmentId)
     """)
     fun findActiveGlobalAndDepartmentNotes(@Param("departmentId") departmentId: String): List<NoteEntity>
+    fun findByDepartmentIdAndIsArchivedFalse(deptId: String): List<NoteEntity>
 }

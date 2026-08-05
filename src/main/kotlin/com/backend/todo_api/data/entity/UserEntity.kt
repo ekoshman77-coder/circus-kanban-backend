@@ -38,6 +38,10 @@ class UserEntity(
     @Column(name = "department_id", nullable = true)
     var departmentId: String? = null,
 
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "department_role_id")
+    var departmentRole: RoleEntity? = null,
+
     @Column(name = "is_approved", nullable = false)
     var isApproved: Boolean = false,
 

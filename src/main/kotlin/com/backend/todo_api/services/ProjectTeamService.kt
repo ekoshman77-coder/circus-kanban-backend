@@ -2,19 +2,23 @@ package com.backend.todo_api.services
 
 import com.backend.todo_api.constants.AppConstants.ADMIN_DEPARTMENT_NAME
 import com.backend.todo_api.data.entity.ProjectMemberEntity
+import com.backend.todo_api.data.entity.RoleEntity
 import com.backend.todo_api.data.entity.UserEntity
 import com.backend.todo_api.data.repository.ProjectRepository
 import com.backend.todo_api.data.repository.UserRepository
 import com.backend.todo_api.data.repository.CoffeeAccountRepository
 import com.backend.todo_api.data.repository.DepartmentRepository
 import com.backend.todo_api.data.repository.ProjectMemberRepository
+import com.backend.todo_api.data.repository.RoleRepository
 import com.backend.todo_api.dto.UserResponseDto
 import com.backend.todo_api.dto.ProjectMemberDto
 import com.backend.todo_api.dto.entityToUserResponseDto
 import com.backend.todo_api.exceptions.UserNotFoundException
 import com.backend.todo_api.exceptions.ProjectNotFoundException
 import com.backend.todo_api.exceptions.TeamValidationException
+import com.backend.todo_api.exceptions.UserDeletedException
 import com.backend.todo_api.exceptions.UserDepartmentNotFoundException
+import com.backend.todo_api.model.RoleType
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 
@@ -24,7 +28,8 @@ class ProjectTeamService(
     private val userRepository: UserRepository,
     private val coffeeAccountRepository: CoffeeAccountRepository,
     private val projectMemberRepository: ProjectMemberRepository,
-    private val departmentRepository: DepartmentRepository
+    private val departmentRepository: DepartmentRepository,
+    private val roleRepository: RoleRepository
 ) {
 
     /**
@@ -41,7 +46,7 @@ class ProjectTeamService(
 
             ProjectMemberDto(
                 user = entityToUserResponseDto(user, coffeeAccount),
-                projectRole = membership.role
+                projectRole = membership.role.name.toString()
             )
         }
     }
@@ -93,7 +98,8 @@ class ProjectTeamService(
             if (existingMembership.user.isArchived) {
                 throw UserNotFoundException("User existiert nicht")
             }
-            existingMembership.role = roleFromFrontend
+
+            existingMembership.role = RoleEntity()
             projectMemberRepository.save(existingMembership)
             finalUser = existingMembership.user
         } else {
@@ -107,7 +113,7 @@ class ProjectTeamService(
                 throw UserNotFoundException("User existiert nicht")
             }
 
-            val newMembership = ProjectMemberEntity(project = project, user = user, role = roleFromFrontend)
+            val newMembership = ProjectMemberEntity(project = project, user = user, role = RoleEntity())
             projectMemberRepository.save(newMembership)
             finalUser = user
         }

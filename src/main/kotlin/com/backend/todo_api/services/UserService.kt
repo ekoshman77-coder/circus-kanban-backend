@@ -9,6 +9,7 @@ import com.backend.todo_api.data.repository.DepartmentRepository
 import com.backend.todo_api.data.repository.MilestoneRepository
 import com.backend.todo_api.data.repository.PlannerSettingsRepository
 import com.backend.todo_api.data.repository.ProjectRepository
+import com.backend.todo_api.data.repository.RoleRepository
 import com.backend.todo_api.data.repository.TodoRepository
 import com.backend.todo_api.data.repository.UserRepository
 import com.backend.todo_api.dto.CreateUserDto
@@ -18,6 +19,8 @@ import com.backend.todo_api.dto.copyToUserDto
 import com.backend.todo_api.exceptions.UserAlreadyExistsException
 import com.backend.todo_api.exceptions.UserNotApprovedException
 import com.backend.todo_api.exceptions.UserNotFoundException
+import com.backend.todo_api.model.RoleType
+import com.backend.todo_api.model.toEntity
 import jakarta.transaction.Transactional
 import org.springframework.http.HttpStatus
 import org.springframework.stereotype.Service
@@ -33,6 +36,7 @@ class UserService(
     private val coffeeAccountRepository: CoffeeAccountRepository,
     private val passwordEncoder: org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder,
     private val departmentRepository: DepartmentRepository,
+    private val roleRepository: RoleRepository
 ) {
 
     // 🔑 Login
@@ -79,12 +83,14 @@ class UserService(
         }
 
         val hashedPassword = passwordEncoder.encode(dto.password)
+        val defaultDepartmentRole = RoleType.MEMBER.toEntity(roleRepository)
         val savedEntity = userRepository.save(UserEntity(
             username = usernameTrimmed,
             firstName = dto.firstName,
             lastName = dto.lastName,
             password = if (hashedPassword == null) "" else hashedPassword,
             departmentId = assignedDepartmentId,
+            departmentRole = defaultDepartmentRole,
             isApproved = approvedStatus
         ))
 
@@ -100,7 +106,7 @@ class UserService(
             userId = savedEntity.id,
             balance = 0f,
             emoji = if (isFirstUser) "👑" else "👩‍💻",
-            role = if (isFirstUser) "Admin" else "Teammitglied"
+            role = "Teammitglied"
         )
         coffeeAccountRepository.save(defaultCoffeeAccount)
 

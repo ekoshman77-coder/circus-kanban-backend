@@ -2,15 +2,21 @@ package com.backend.todo_api.config
 
 import com.backend.todo_api.constants.AppConstants
 import com.backend.todo_api.data.entity.DepartmentEntity
+import com.backend.todo_api.data.repository.RoleRepository
+import com.backend.todo_api.data.repository.ScopeRepository
+import com.backend.todo_api.model.ScopeType
 import org.springframework.boot.ApplicationArguments
 import org.springframework.boot.ApplicationRunner
 import org.springframework.stereotype.Component
 import jakarta.persistence.EntityManager
 import jakarta.transaction.Transactional
+import org.springframework.core.annotation.Order
 
 @Component
+@Order(2)
 class DatabaseSeeder(
-    private val entityManager: EntityManager
+    private val entityManager: EntityManager,
+    private val scopeRepository: ScopeRepository
 ) : ApplicationRunner {
 
     @Transactional
@@ -24,8 +30,11 @@ class DatabaseSeeder(
         if (departmentCount == 0L) {
             println("ℹ️ Keine Abteilungen gefunden. Erzeuge die '${AppConstants.ADMIN_DEPARTMENT_NAME}'-Abteilung...")
 
+            val deptScope = scopeRepository.findByName(ScopeType.DEPARTMENT)
+                ?: throw IllegalStateException("DEPARTMENT Scope wurde nicht in der DB gefunden!")
+
             // Die ID wird hier direkt als UUID-String in der Entity erzeugt!
-            val adminDepartment = DepartmentEntity(name = AppConstants.ADMIN_DEPARTMENT_NAME)
+            val adminDepartment = DepartmentEntity(name = AppConstants.ADMIN_DEPARTMENT_NAME, defaultScope = deptScope)
             entityManager.persist(adminDepartment)
 
             println("✅ '${AppConstants.ADMIN_DEPARTMENT_NAME}'-Abteilung erfolgreich mit ID ${adminDepartment.id} angelegt.")

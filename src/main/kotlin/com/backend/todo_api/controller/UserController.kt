@@ -48,7 +48,7 @@ class UserController(private val userService: UserService) {
             val isUserAdmin = userService.isAdminDepartment(userDto.departmentId)
             val roleName = if (isUserAdmin) "ROLE_ADMIN" else "ROLE_USER"
             val authorities = listOf(SimpleGrantedAuthority(roleName))
-            val authentication = UsernamePasswordAuthenticationToken(userDto.username, null, authorities)
+            val authentication = UsernamePasswordAuthenticationToken(userDto.id, null, authorities)
 
             val context = SecurityContextHolder.createEmptyContext()
             context.authentication = authentication
@@ -80,7 +80,7 @@ class UserController(private val userService: UserService) {
             val isUserAdmin = userService.isAdminDepartment(userDto.departmentId)
             val roleName = if (isUserAdmin) "ROLE_ADMIN" else "ROLE_USER"
             val authorities = listOf(SimpleGrantedAuthority(roleName))
-            val authentication = UsernamePasswordAuthenticationToken(userDto.username, null, authorities)
+            val authentication = UsernamePasswordAuthenticationToken(userDto.id, null, authorities)
 
             val context = SecurityContextHolder.createEmptyContext()
             context.authentication = authentication
@@ -175,7 +175,7 @@ class UserController(private val userService: UserService) {
             val roleName = if (isUserAdmin) "ROLE_ADMIN" else "ROLE_USER"
 
             val authorities = listOf(SimpleGrantedAuthority(roleName))
-            val authentication = UsernamePasswordAuthenticationToken(userDto.username, null, authorities)
+            val authentication = UsernamePasswordAuthenticationToken(userDto.id, null, authorities)
 
             val context = SecurityContextHolder.createEmptyContext()
             context.authentication = authentication

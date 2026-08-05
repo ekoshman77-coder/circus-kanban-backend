@@ -65,13 +65,12 @@ class ProjectEntity(
         return dto
     }
 
-    fun addTeamMember(user: UserEntity, roleStr: String) {
+    fun addTeamMember(user: UserEntity, roleEntity: RoleEntity) {
         val alreadyMember = teamMemberships.any { it.user.id == user.id }
         if (!alreadyMember) {
-            // Nutzt die neue String-Spalte deiner ProjectMemberEntity!
-            val newMembership = ProjectMemberEntity(user = user, project = this, role = roleStr)
+            val newMembership = ProjectMemberEntity(user = user, project = this, role = roleEntity)
             teamMemberships.add(newMembership)
-            user.projectMemberships.add(newMembership) // Beidseitige Verknüpfung im Speicher
+            user.projectMemberships.add(newMembership)
         }
     }
 

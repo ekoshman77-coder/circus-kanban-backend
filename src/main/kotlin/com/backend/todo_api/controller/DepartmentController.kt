@@ -23,7 +23,8 @@ class DepartmentController(private val departmentService: DepartmentService) {
     @PostMapping
     @Operation(summary = "Neue Abteilung erstellen")
     fun createDepartment(@RequestBody dto: DepartmentDto): ResponseEntity<DepartmentDto> {
-        val created = departmentService.createDepartment(dto.name)
+        
+        val created = departmentService.createDepartment(dto)
         return ResponseEntity.status(HttpStatus.CREATED).body(created)
     }
 

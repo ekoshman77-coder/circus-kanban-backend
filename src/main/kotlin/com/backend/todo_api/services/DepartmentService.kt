@@ -3,17 +3,22 @@ package com.backend.todo_api.services
 import com.backend.todo_api.constants.AppConstants
 import com.backend.todo_api.data.entity.DepartmentEntity
 import com.backend.todo_api.data.repository.DepartmentRepository
+import com.backend.todo_api.data.repository.ScopeRepository
 import com.backend.todo_api.data.repository.UserRepository
 import com.backend.todo_api.dto.DepartmentDto
 import com.backend.todo_api.dto.toDto
+import com.backend.todo_api.model.ScopeType
+import com.backend.todo_api.model.toEntity
 import jakarta.transaction.Transactional
 import org.springframework.stereotype.Service
 
 @Service
 class DepartmentService(
     private val departmentRepository: DepartmentRepository,
-    private val userRepository: UserRepository
-) {
+    private val userRepository: UserRepository,
+    private val scopeRepository: ScopeRepository
+    )
+{
 
     // 📋 Gibt jetzt eine Liste von DTOs zurück
     fun getAllDepartments(): List<DepartmentDto> {
@@ -22,12 +27,16 @@ class DepartmentService(
 
     // ✨ Erstellt eine Abteilung und gibt das DTO zurück
     @Transactional
-    fun createDepartment(name: String): DepartmentDto {
-        val trimmedName = name.trim()
+    fun createDepartment(departmentDto: DepartmentDto): DepartmentDto {
+        val trimmedName = departmentDto.name.trim()
         if (departmentRepository.findByNameIgnoreCase(trimmedName) != null) {
             throw RuntimeException("Eine Abteilung mit dem Namen '$trimmedName' existiert bereits.")
         }
-        val savedEntity = departmentRepository.save(DepartmentEntity(name = trimmedName))
+        val savedEntity = departmentRepository.save(
+            DepartmentEntity(
+                                    name = trimmedName,
+                                    defaultScope = departmentDto.scope.toEntity(scopeRepository))
+        )
         return savedEntity.toDto()
     }
 

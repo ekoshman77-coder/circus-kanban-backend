@@ -11,6 +11,10 @@ class DepartmentEntity(
     val id: String = UUID.randomUUID().toString(),
 
     @Column(name = "name", unique = true, nullable = false)
-    var name: String = ""
+    var name: String = "",
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "scope_id", nullable = false)
+    var defaultScope: ScopeEntity = ScopeEntity()
 )
 

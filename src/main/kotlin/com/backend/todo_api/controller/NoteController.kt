@@ -16,32 +16,49 @@ import org.springframework.web.bind.annotation.RequestMapping
 import org.springframework.web.bind.annotation.RequestParam
 import org.springframework.web.bind.annotation.ResponseStatus
 import org.springframework.web.bind.annotation.RestController
+import java.security.Principal
 
 @RestController
 @RequestMapping("/api/notes")
 @CrossOrigin(origins = ["http://localhost:4200"])
-class NoteController(private val noteService: NoteService) {
+class NoteController(private val noteService: NoteService   ) {
 
     @GetMapping
-    fun getNotes(@RequestParam(required = false) userId: String?): ResponseEntity<List<NoteDto>> {
+    fun getNotes(
+        @RequestParam(required = false) userId: String?,
+        principal: Principal
+        ): ResponseEntity<List<NoteDto>> {
+        val userId = principal.name
         val notes = noteService.getNotesByUserId(userId)
         return ResponseEntity.ok(notes)
     }
 
     @GetMapping("/{id}")
-    fun getNoteById(@PathVariable id: String): ResponseEntity<NoteDto> { // 🔑 String id
-        return ResponseEntity.ok(noteService.getNoteById(id))
+    fun getNoteById(
+        @PathVariable id: String,
+        principal: Principal
+                    ): ResponseEntity<NoteDto> {
+        val userId = principal.name
+        return ResponseEntity.ok(noteService.getNoteById(userId, id))
     }
 
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
-    fun createNote(@RequestBody dto: CreateNoteDto): ResponseEntity<NoteDto> {
-        return ResponseEntity.ok(noteService.createNote(dto))
+    fun createNote(@RequestBody dto: CreateNoteDto,
+                   principal: Principal
+    ): ResponseEntity<NoteDto> {
+        val currentUserId = principal.name
+        return ResponseEntity.ok(noteService.createNote(currentUserId,dto))
     }
 
     @PutMapping("/{id}")
-    fun updateNote(@PathVariable id: String, @RequestBody dto: NoteDto): ResponseEntity<NoteDto> {
-        return ResponseEntity.ok(noteService.updateNote(id, dto))
+    fun updateNote(
+        @PathVariable id: String,
+        @RequestBody dto: NoteDto,
+        principal: Principal
+    ): ResponseEntity<NoteDto> {
+        val userId = principal.name
+        return ResponseEntity.ok(noteService.updateNote(userId, id, dto))
     }
 
     @DeleteMapping("/{id}")
@@ -49,7 +66,7 @@ class NoteController(private val noteService: NoteService) {
         @PathVariable id: String,
         @RequestParam userId: String // 🎯 Hier fangen wir die userId ab!
     ): ResponseEntity<Unit> {
-        noteService.deleteNote(id, userId) // 🔑 Und reichen sie sauber weiter
+        noteService.deleteNote(userId, id) // 🔑 Und reichen sie sauber weiter
         return ResponseEntity.noContent().build()
     }
 }
