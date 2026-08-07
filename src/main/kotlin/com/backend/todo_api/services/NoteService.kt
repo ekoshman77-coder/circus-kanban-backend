@@ -22,6 +22,7 @@ import org.springframework.stereotype.Service
 import org.springframework.web.server.ResponseStatusException
 import java.security.Principal
 import com.backend.todo_api.exceptions.UserDeletedException
+import com.backend.todo_api.model.toSecurityResource
 
 @Service
 class NoteService(
@@ -32,51 +33,27 @@ class NoteService(
     )
 {
 
-    private fun getUserIdFromPrincipal(principal: Principal?): String {
-        return principal?.name
-            ?: throw ResponseStatusException(
-                HttpStatus.UNAUTHORIZED,
-                "Nicht authentifiziert: Bitte logge dich zuerst ein."
-            )
-    }
-
-//    fun createNote(createNoteDto: CreateNoteDto): NoteDto {
-//        validateUserExists(createNoteDto.userId, userRepository)
-//        val created = noteRepository.save(createNoteDto.toNewEntity()).toDto()
-//        return created
-//    }
-
     fun createNote(userId: String, noteDto: CreateNoteDto): NoteDto {
         val user = userRepository.findById(userId).orElseThrow {
             UserDeletedException("User $userId nicht gefunden.")
         }
 
         val userContexts = userContextResolver.resolveContexts(user)
-
+        val noteEntity = noteDto.toNewEntity()
         // Da jeder aktive User eine Abteilung HABEN MUSS, prüfen wir direkt gegen user.departmentId!
         val canCreate = permissionService.hasPermission(
             userContexts = userContexts,
-            resourceContext = ResourceContext(
-                resource = ResourceType.NOTE,
-                instanceId = user.departmentId
-            ),
+            resource = noteEntity.toSecurityResource(),
             action = ActionType.CREATE
         )
 
         if (!canCreate) {
-            throw SecurityException("Zugriff verweigert: Du darfst in deiner Abteilung keine Notizen erstellen.")
+            throw SecurityException("Zugriff verweigert: Du darfst keine Notizen erstellen.")
         }
 
-        val created = noteRepository.save(noteDto.toNewEntity()).toDto()
+        val created = noteRepository.save(noteEntity).toDto()
         return created
     }
-
-//    fun getNoteById(id: String): NoteDto {
-//        val entity = noteRepository.findById(id)
-//            .orElseThrow { IllegalArgumentException("Zettel mit ID $id nicht gefunden!") }
-//
-//        return entity.toDto()
-//    }
 
     fun getNoteById(userId: String, noteId: String): NoteDto {
         val note = noteRepository.findById(noteId).orElseThrow {
@@ -85,30 +62,15 @@ class NoteService(
 
         val userContexts = userContextResolver.resolveContexts(userId)
 
-        // Prüfen, ob der User diese Notiz lesen darf
-        // Wir übergeben note.userId als instanceId für den RESOURCE-Check
+        // 1 Zeile Clean-Architecture-Prüfung!
         val canRead = permissionService.hasPermission(
             userContexts = userContexts,
-            resourceContext = ResourceContext(
-                resource = ResourceType.NOTE,
-                instanceId = note.userId
-            ),
-            action = ActionType.READ
+            action = ActionType.READ,
+            resource = note.toSecurityResource()
         )
 
         if (!canRead) {
             throw SecurityException("Zugriff verweigert: Du hast keine Berechtigung, diese Notiz zu lesen.")
-        }
-
-        // Falls der User nur Abteilungs-Rechte hat, stellen wir sicher, dass die Notiz auch zu seiner Abteilung gehört
-        val maxContext = permissionService.getMaxAllowedUserContext(
-            userContexts = userContexts,
-            resource = ResourceType.NOTE,
-            action = ActionType.READ
-        )
-
-        if (maxContext?.scope?.name == ScopeType.DEPARTMENT && note.departmentId != maxContext.scopeInstanceId) {
-            throw SecurityException("Zugriff verweigert: Diese Notiz gehört nicht zu deiner Abteilung.")
         }
 
         return note.toDto()
@@ -142,13 +104,6 @@ class NoteService(
         return notes.map { it.toDto() }
     }
 
-    /**
-     * Holt ALLE aktiven Ideen des gesamten Teams (für die gemeinsame Kreativ-Basis)
-     */
-    fun getAllActiveNotes(): List<NoteDto> {
-        return noteRepository.findByIsArchivedFalse().map { it.toDto() }
-    }
-
     // 3. Zettel editieren (Sicherheitshalber prüfen wir hier auch die userId!)
     @Transactional
     fun updateNote(userId: String, noteId: String, updatedDto: NoteDto): NoteDto {
@@ -162,7 +117,7 @@ class NoteService(
         // Wir prüfen gegen den Besitzer der Notiz (note.userId)
         val canUpdate = permissionService.hasPermission(
             userContexts = userContexts,
-            resourceContext = ResourceContext(ResourceType.NOTE, updatedDto.userId),
+            resource = note.toSecurityResource(),
             action = ActionType.UPDATE,
         )
 
@@ -178,19 +133,6 @@ class NoteService(
     }
 
     @Transactional
-//    fun deleteNote(id: String, userId: String) { // 🎯 userId kommt jetzt mit!
-//        val entity = noteRepository.findById(id)
-//            .orElseThrow { IllegalArgumentException("Zettel nicht gefunden!") }
-//
-//        // KONSEQUENZ: Wir schützen das Archiv genau wie das Update!
-//        if (entity.userId != userId) {
-//            throw IllegalAccessException("Nur der Eigentümer darf diese Idee archivieren!")
-//        }
-//
-//        entity.isArchived = true
-//        noteRepository.save(entity)
-//    }
-
     fun deleteNote(userId: String, noteId: String) {
         val note = noteRepository.findById(noteId).orElseThrow {
             IllegalArgumentException("Notiz $noteId nicht gefunden.")
@@ -200,7 +142,7 @@ class NoteService(
 
         val canDelete = permissionService.hasPermission(
             userContexts = userContexts,
-            resourceContext = ResourceContext(ResourceType.NOTE, note.userId),
+            resource = note.toSecurityResource(),
             action = ActionType.DELETE,
         )
 

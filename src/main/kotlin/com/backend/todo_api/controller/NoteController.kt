@@ -28,7 +28,7 @@ class NoteController(private val noteService: NoteService   ) {
         @RequestParam(required = false) userId: String?,
         principal: Principal
         ): ResponseEntity<List<NoteDto>> {
-        val userId = principal.name
+        val userId = getUserIdFromPrincipal(principal)
         val notes = noteService.getNotesByUserId(userId)
         return ResponseEntity.ok(notes)
     }
@@ -38,7 +38,7 @@ class NoteController(private val noteService: NoteService   ) {
         @PathVariable id: String,
         principal: Principal
                     ): ResponseEntity<NoteDto> {
-        val userId = principal.name
+        val userId = getUserIdFromPrincipal(principal)
         return ResponseEntity.ok(noteService.getNoteById(userId, id))
     }
 
@@ -47,7 +47,7 @@ class NoteController(private val noteService: NoteService   ) {
     fun createNote(@RequestBody dto: CreateNoteDto,
                    principal: Principal
     ): ResponseEntity<NoteDto> {
-        val currentUserId = principal.name
+        val currentUserId = getUserIdFromPrincipal(principal)
         return ResponseEntity.ok(noteService.createNote(currentUserId,dto))
     }
 
@@ -57,15 +57,16 @@ class NoteController(private val noteService: NoteService   ) {
         @RequestBody dto: NoteDto,
         principal: Principal
     ): ResponseEntity<NoteDto> {
-        val userId = principal.name
+        val userId = getUserIdFromPrincipal(principal)
         return ResponseEntity.ok(noteService.updateNote(userId, id, dto))
     }
 
     @DeleteMapping("/{id}")
     fun deleteNote(
         @PathVariable id: String,
-        @RequestParam userId: String // 🎯 Hier fangen wir die userId ab!
+        principal: Principal
     ): ResponseEntity<Unit> {
+        val userId = getUserIdFromPrincipal(principal)
         noteService.deleteNote(userId, id) // 🔑 Und reichen sie sauber weiter
         return ResponseEntity.noContent().build()
     }

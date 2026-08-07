@@ -22,4 +22,5 @@ interface UserRepository : JpaRepository<UserEntity, String> {
 
     // 🔍 Holt einfach JEDEN User, der nicht archiviert ist (egal ob approved oder nicht)
     fun findByIsArchivedFalse(): List<UserEntity>
+    fun findByIdAndIsArchivedFalse(id: String): UserEntity?
 }

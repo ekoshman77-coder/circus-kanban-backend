@@ -7,6 +7,7 @@ import com.backend.todo_api.services.ProjectService
 import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
 import org.springframework.web.bind.annotation.*
+import java.security.Principal
 
 @RestController
 @RequestMapping("/api/projects")
@@ -14,7 +15,10 @@ import org.springframework.web.bind.annotation.*
 class ProjectController(private val projectService: ProjectService) {
 
     @GetMapping
-    fun getProjects(@RequestParam(required = true) userId: String?): ResponseEntity<List<ProjectDto>> {
+    fun getProjects(
+        principal: Principal
+    ): ResponseEntity<List<ProjectDto>> {
+        val userId = getUserIdFromPrincipal(principal)
         // Reicht die userId an den überarbeiteten Service weiter
         val projects = projectService.getProjectsByWithUser(userId)
         return ResponseEntity.ok(projects)
@@ -22,25 +26,42 @@ class ProjectController(private val projectService: ProjectService) {
 
     // Endpunkt für die Einzelabfrage eines Projekts
     @GetMapping("/{id}")
-    fun getProjectById(@PathVariable id: String): ResponseEntity<ProjectDto> {
-        return ResponseEntity.ok(projectService.getProjectById(id))
+    fun getProjectById(
+        @PathVariable id: String,
+        principal: Principal
+    ): ResponseEntity<ProjectDto> {
+        val userId = getUserIdFromPrincipal(principal)
+        return ResponseEntity.ok(projectService.getProjectById(userId, id))
     }
 
     @PostMapping
-    fun createProject(@RequestBody dto: CreateProjectDto): ResponseEntity<ProjectDto> {
-        val project = projectService.createProject(dto)
+    fun createProject(
+        @RequestBody dto: CreateProjectDto,
+        principal: Principal
+    ): ResponseEntity<ProjectDto> {
+        val userId = getUserIdFromPrincipal(principal)
+        val project = projectService.createProject(userId, dto)
         println("project was created")
         return ResponseEntity.status(HttpStatus.CREATED).body(project)
     }
 
     @PutMapping("/{id}")
-    fun updateProject(@PathVariable id: String, @RequestBody dto: CreateProjectDto): ResponseEntity<ProjectDto> {
-        return ResponseEntity.ok(projectService.updateProject(id, dto))
+    fun updateProject(
+        @PathVariable id: String,
+        @RequestBody dto: ProjectDto,
+        principal: Principal
+    ): ResponseEntity<ProjectDto> {
+        val userId = getUserIdFromPrincipal(principal)
+        return ResponseEntity.ok(projectService.updateProject(userId, id, dto))
     }
 
     @DeleteMapping("/{id}")
-    fun deleteProject(@PathVariable id: String): ResponseEntity<Void> {
-        projectService.deleteProject(id)
+    fun deleteProject(
+        @PathVariable id: String,
+        principal: Principal
+        ): ResponseEntity<Void> {
+        val userId = getUserIdFromPrincipal(principal)
+        projectService.deleteProject(userId, id)
         return ResponseEntity.noContent().build()
     }
 

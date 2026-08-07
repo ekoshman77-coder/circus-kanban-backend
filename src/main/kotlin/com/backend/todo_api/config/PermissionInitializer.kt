@@ -84,9 +84,13 @@ class PermissionInitializer(
     }
 
     private fun initPermissions() {
-        if (rolePermissionRepository.count() > 0) return // Wenn schon Rechte da sind, abbrechen
-
         val noteResource = resourceRepository.findByName(ResourceType.NOTE)!!
+        val projectResource = resourceRepository.findByName(ResourceType.PROJECT)!!
+        val todoResource = resourceRepository.findByName(ResourceType.TODO)!!
+
+        // 🚀 NEU: User- und Department-Ressourcen laden
+        val userResource = resourceRepository.findByName(ResourceType.USER)!!
+        val departmentResource = resourceRepository.findByName(ResourceType.DEPARTMENT)!!
 
         val readAction = actionRepository.findByName(ActionType.READ)!!
         val createAction = actionRepository.findByName(ActionType.CREATE)!!
@@ -95,56 +99,194 @@ class PermissionInitializer(
 
         val resourceScope = scopeRepository.findByName(ScopeType.RESOURCE)!!
         val deptScope = scopeRepository.findByName(ScopeType.DEPARTMENT)!!
+        val projectScope = scopeRepository.findByName(ScopeType.PROJECT)!!
         val companyScope = scopeRepository.findByName(ScopeType.COMPANY)!!
 
         val ownerRole = roleRepository.findByName(RoleType.OWNER)!!
         val memberRole = roleRepository.findByName(RoleType.MEMBER)!!
+        val projectManagerRole = roleRepository.findByName(RoleType.PROJECT_MANAGER)!!
         val adminRole = roleRepository.findByName(RoleType.ADMIN)!!
 
-        // 1. OWNER: Full Control auf eigene Notizen (RESOURCE-Scope)
-        listOf(readAction, createAction, updateAction, deleteAction).forEach { action ->
+        // 1. NOTE PERMISSIONS
+        if (!rolePermissionRepository.existsByResource(noteResource)) {
+            listOf(readAction, createAction, updateAction, deleteAction).forEach { action ->
+                rolePermissionRepository.save(
+                    RolePermissionEntity(
+                        role = ownerRole,
+                        action = action,
+                        targetScope = resourceScope,
+                        resource = noteResource
+                    )
+                )
+            }
+
+            listOf(readAction, createAction).forEach { action ->
+                rolePermissionRepository.save(
+                    RolePermissionEntity(
+                        role = memberRole,
+                        action = action,
+                        targetScope = deptScope,
+                        resource = noteResource
+                    )
+                )
+            }
+
+            listOf(updateAction, deleteAction).forEach { action ->
+                rolePermissionRepository.save(
+                    RolePermissionEntity(
+                        role = memberRole,
+                        action = action,
+                        targetScope = resourceScope,
+                        resource = noteResource
+                    )
+                )
+            }
+
             rolePermissionRepository.save(
                 RolePermissionEntity(
-                    role = ownerRole,
-                    action = action,
-                    targetScope = resourceScope,
+                    role = adminRole,
+                    action = readAction,
+                    targetScope = companyScope,
                     resource = noteResource
                 )
             )
         }
 
-        // 2. MEMBER auf DEPARTMENT-Ebene: Darf Notizen der Abteilung LESEN und ERSTELLEN
-        listOf(readAction, createAction).forEach { action ->
+        // 2. PROJECT PERMISSIONS
+        if (!rolePermissionRepository.existsByResource(projectResource)) {
+            // MEMBER: Darf Projekte der eigenen Abteilung LESEN & ERSTELLEN
+            listOf(readAction, createAction).forEach { action ->
+                rolePermissionRepository.save(
+                    RolePermissionEntity(
+                        role = memberRole,
+                        action = action,
+                        targetScope = deptScope,
+                        resource = projectResource
+                    )
+                )
+            }
+
+            // PROJECT_MANAGER: Full Control auf PROJECT-Scope (inkl. UPDATE für Team-Zuweisung!)
+            listOf(readAction, createAction, updateAction, deleteAction).forEach { action ->
+                rolePermissionRepository.save(
+                    RolePermissionEntity(
+                        role = projectManagerRole,
+                        action = action,
+                        targetScope = projectScope,
+                        resource = projectResource
+                    )
+                )
+            }
+
+            // ADMIN: Darf firmenweit Projekte LESEN, ERSTELLEN, EDITIEREN & LÖSCHEN
+            listOf(readAction, createAction, updateAction, deleteAction).forEach { action ->
+                rolePermissionRepository.save(
+                    RolePermissionEntity(
+                        role = adminRole,
+                        action = action,
+                        targetScope = companyScope,
+                        resource = projectResource
+                    )
+                )
+            }
+        }
+
+        // 3. TODO PERMISSIONS
+        if (!rolePermissionRepository.existsByResource(todoResource)) {
+            // PRIVATE TODOS (Scope: RESOURCE) -> Volle Kontrolle für den Ersteller
+            listOf(readAction, createAction, updateAction, deleteAction).forEach { action ->
+                rolePermissionRepository.save(
+                    RolePermissionEntity(
+                        role = ownerRole,
+                        action = action,
+                        targetScope = resourceScope,
+                        resource = todoResource
+                    )
+                )
+            }
+
+            // PROJEKT TODOS (Scope: PROJECT) -> Mitglieder dürfen Lesen, Erzeugen, Editieren
+            listOf(readAction, createAction, updateAction).forEach { action ->
+                rolePermissionRepository.save(
+                    RolePermissionEntity(
+                        role = memberRole,
+                        action = action,
+                        targetScope = projectScope,
+                        resource = todoResource
+                    )
+                )
+            }
+
+            // PROJEKT MANAGER & ADMIN -> Dürfen Projekt-Todos AUCH löschen
+            listOf(readAction, createAction, updateAction, deleteAction).forEach { action ->
+                rolePermissionRepository.save(
+                    RolePermissionEntity(
+                        role = projectManagerRole,
+                        action = action,
+                        targetScope = projectScope,
+                        resource = todoResource
+                    )
+                )
+            }
+        }
+
+        // 4. 🚀 USER PERMISSIONS (inkl. Cross-Department / PROJECT-Support!)
+        if (!rolePermissionRepository.existsByResource(userResource)) {
+            // OWNER: Eigenes Profil lesen, bearbeiten und löschen
+            listOf(readAction, updateAction, deleteAction).forEach { action ->
+                rolePermissionRepository.save(
+                    RolePermissionEntity(
+                        role = ownerRole,
+                        action = action,
+                        targetScope = resourceScope,
+                        resource = userResource
+                    )
+                )
+            }
+
+            // MEMBER: Kollege-Details in der eigenen Abteilung lesen
             rolePermissionRepository.save(
                 RolePermissionEntity(
                     role = memberRole,
-                    action = action,
+                    action = readAction,
                     targetScope = deptScope,
-                    resource = noteResource
+                    resource = userResource
                 )
             )
-        }
 
-        // 3. MEMBER auf RESOURCE-Ebene: Darf eigene Notizen BEARBEITEN und LÖSCHEN
-        listOf(updateAction, deleteAction).forEach { action ->
+            // 🎯 NEU: PROJECT SCOPE für USER
+            // Jeder, der in einem Projekt ist (z. B. Projektmitglieder oder PM),
+            // darf auch User-Details anderer Mitglieder im SELBEN PROJEKT lesen!
+            // (Egal aus welcher Abteilung sie stammen!)
             rolePermissionRepository.save(
                 RolePermissionEntity(
                     role = memberRole,
-                    action = action,
-                    targetScope = resourceScope,
-                    resource = noteResource
+                    action = readAction,
+                    targetScope = projectScope,
+                    resource = userResource
                 )
             )
-        }
 
-        // 4. ADMIN: Firmenweit NUR LESEN (COMPANY-Scope)
-        rolePermissionRepository.save(
-            RolePermissionEntity(
-                role = adminRole,
-                action = readAction, // 👈 Nur READ für Admin auf COMPANY-Ebene
-                targetScope = companyScope,
-                resource = noteResource
+            rolePermissionRepository.save(
+                RolePermissionEntity(
+                    role = projectManagerRole,
+                    action = readAction,
+                    targetScope = projectScope,
+                    resource = userResource
+                )
             )
-        )
+
+            // ADMIN: Volle Kontrolle firmenweit (Genehmigung, Board, Bearbeiten)
+            listOf(readAction, createAction, updateAction, deleteAction).forEach { action ->
+                rolePermissionRepository.save(
+                    RolePermissionEntity(
+                        role = adminRole,
+                        action = action,
+                        targetScope = companyScope,
+                        resource = userResource
+                    )
+                )
+            }
+        }
     }
 }

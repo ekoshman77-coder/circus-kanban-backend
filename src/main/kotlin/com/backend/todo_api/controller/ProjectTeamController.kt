@@ -11,6 +11,7 @@ import io.swagger.v3.oas.annotations.tags.Tag
 import org.springframework.http.ResponseEntity
 import org.springframework.security.access.prepost.PreAuthorize
 import org.springframework.web.bind.annotation.*
+import java.security.Principal
 
 @RestController
 @CrossOrigin(origins = ["http://localhost:4200"])
@@ -30,17 +31,17 @@ class ProjectTeamController(
         ApiResponse(responseCode = "404", description = "Projekt oder anfragender Benutzer nicht gefunden")
     ])
     fun getProjectMembers(
-        @RequestParam userId: String,
-        @RequestParam(required = false) projectId: String?
+        @RequestParam(required = false) projectId: String?,
+        principal: Principal
          // Zwingend erforderlich für die Abteilungstrennung!
     ): ResponseEntity<List<ProjectMemberDto>> {
-
+        val currentUserId = principal.name
         val members = if (projectId.isNullOrBlank()) {
             // 🌍 Fall A: Abteilungs-Pool (Nur Kollegen aus der eigenen Abteilung)
-            projectTeamService.getAllGlobalUsersWithProjects(userId)
+            projectTeamService.getAllGlobalUsersWithProjects(currentUserId)
         } else {
             // 📂 Fall B: Echte Projektmitglieder inklusive ihrer echten Rolle aus der DB!
-            projectTeamService.getMembersForProject(projectId)
+            projectTeamService.getMembersForProject(projectId, currentUserId)
         }
 
         return ResponseEntity.ok(members)
@@ -60,9 +61,11 @@ class ProjectTeamController(
     fun assignUserToProject(
         @RequestParam projectId: String,
         @RequestParam role: String,
-        @jakarta.validation.Valid @RequestBody request: AssignUserRequestDTO // 🎯 HIER muss @Valid stehen!
+        @jakarta.validation.Valid @RequestBody request: AssignUserRequestDTO,
+        principal: Principal
     ): ResponseEntity<ProjectMemberDto> {
-        val assigned = projectTeamService.assignUserToProject(projectId, request.userId, role)
+        val currentUserId = principal.name
+        val assigned = projectTeamService.assignUserToProject(currentUserId, projectId, request.userId, role)
         return ResponseEntity.ok(assigned)
     }
 
@@ -79,9 +82,11 @@ class ProjectTeamController(
     ])
     fun removeUserFromProject(
         @RequestParam projectId: String,
-        @PathVariable memberId: String
+        @PathVariable memberId: String,
+        principal: Principal
     ): ResponseEntity<Void> {
-        projectTeamService.removeUserFromProject(projectId, memberId)
+        val currentUserId = principal.name
+        projectTeamService.removeUserFromProject(projectId, memberId, currentUserId)
         return ResponseEntity.noContent().build()
     }
 
@@ -99,9 +104,11 @@ class ProjectTeamController(
         @PathVariable id: String,
         @RequestParam balance: Float,
         @RequestParam role: String,
-        @RequestParam emoji: String
+        @RequestParam emoji: String,
+        principal: Principal
     ): ResponseEntity<UserResponseDto> {
-        val updatedUser = projectTeamService.updateCoffeeAccount(id, balance, role, emoji)
+        val currentUserId = principal.name
+        val updatedUser = projectTeamService.updateCoffeeAccount( currentUserId, id, balance, role, emoji)
         return ResponseEntity.ok(updatedUser)
     }
 
@@ -113,8 +120,9 @@ class ProjectTeamController(
     )
     @ApiResponses(value = [
         ApiResponse(responseCode = "200", description = "Admin-Benutzerliste erfolgreich geladen")
-    ])    fun getAllUsersForAdmin(): ResponseEntity<List<ProjectMemberDto>> {
-        val allUsers = projectTeamService.getAllUsersForAdminBoard()
+    ])    fun getAllUsersForAdmin( principal: Principal ): ResponseEntity<List<ProjectMemberDto>> {
+        val currentUserId = principal.name
+        val allUsers = projectTeamService.getAllUsersForAdminBoard(currentUserId)
         return ResponseEntity.ok(allUsers)
     }
 }

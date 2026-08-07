@@ -8,6 +8,11 @@ import com.backend.todo_api.data.repository.UserRepository
 import com.backend.todo_api.dto.CreateProjectDto
 import com.backend.todo_api.dto.ProjectDashboardStatsDTO
 import com.backend.todo_api.dto.ProjectDto
+import com.backend.todo_api.model.ActionType
+import com.backend.todo_api.model.ProjectSecurityResource
+import com.backend.todo_api.model.ResourceType
+import com.backend.todo_api.model.ScopeType
+import com.backend.todo_api.model.toSecurityResource
 import jakarta.transaction.Transactional
 import org.springframework.stereotype.Service
 
@@ -15,63 +20,119 @@ import org.springframework.stereotype.Service
 class ProjectService(
     private val projectRepository: ProjectRepository,
     private val userRepository: UserRepository,
-    private val projectMemberRepository: ProjectMemberRepository
+    private val projectMemberRepository: ProjectMemberRepository,
+    private val userContextResolver: UserContextResolver,
+    private val permissionService: PermissionService
 ) {
 
     fun getProjectsByWithUser(userId: String?): List<ProjectDto> {
-        if (userId == null) return emptyList()
+        if (userId.isNullOrBlank()) return emptyList()
 
-        // 1. User aus der DB holen, um seine echte departmentId auszulesen
-        val user = userRepository.findById(userId)
-            .orElseThrow { IllegalArgumentException("User mit ID $userId nicht gefunden!") }
+        // 1. Alle Kontexte des Benutzers auflösen (RESOURCE, DEPARTMENT/COMPANY, PROJECT)
+        val userContexts = userContextResolver.resolveContexts(userId)
 
-        val userDeptId = user.departmentId
+        // 2. Maximalen zugelassenen Kontext für READ auf PROJECT ermitteln
+        val maxContext = permissionService.getMaxAllowedUserContext(
+            userContexts = userContexts,
+            action = ActionType.READ,
+            resource = ResourceType.PROJECT
+        ) ?: return emptyList() // Keine Berechtigung -> Leere Liste
 
-        // 2. Sicherheits-Check: Ist der User einer Abteilung zugewiesen?
-        if (userDeptId.isNullOrBlank()) {
-            return emptyList() // Noch nicht vom Admin freigeschaltet -> Sieht nichts!
+        // 3. Entsprechend des ermittelten Max-Contexts dynamisch aus der DB laden:
+        return when (maxContext.scope.name) {
+            // ADMIN / COMPANY-Scope: maxContext.scopeInstanceId ist null -> Alle Projekte
+            ScopeType.COMPANY -> {
+                projectRepository.findByStatusNot("Zip")
+                    .map { it.toDto() }
+            }
+
+            // MEMBER / DEPARTMENT-Scope: Nur Projekte der eigenen Abteilung
+            ScopeType.DEPARTMENT -> {
+                val deptId = maxContext.scopeInstanceId
+                    ?: return emptyList()
+
+                projectRepository.findByDepartmentIdAndStatusNot(deptId, "Zip")
+                    .map { it.toDto() }
+            }
+
+            // PROJECT_MANAGER / PROJECT-Scope oder RESOURCE-Scope:
+            // Nur Projekte, in denen der User als Projektmitglied eingetragen ist
+            ScopeType.PROJECT, ScopeType.RESOURCE -> {
+                projectRepository.findProjectsByMemberUserIdAndStatusNot(userId, "Zip")
+                    .map { it.toDto() }
+            }
+
+            else -> emptyList()
         }
-
-        // 3. Fallunterscheidung nach Rolle/Abteilung
-        return projectRepository.findByDepartmentIdAndStatusNot(userDeptId, "Zip").map { it.toDto() }
     }
 
-    fun getProjectById(id: String): ProjectDto {
-        return projectRepository.findById(id)
-            .map { it.toDto() }
-            .orElseThrow { RuntimeException("Projekt mit ID $id wurde nicht gefunden.") }
+    fun getProjectById(userId: String, id: String): ProjectDto {
+        val  project = projectRepository.findById(id)
+            .orElseThrow { RuntimeException("Projekt mit ID $id nicht gefunden") }
+
+        // 1. Alle Kontexte des Benutzers laden
+        val userContexts = userContextResolver.resolveContexts(userId)
+
+        val canRead = permissionService.hasPermission(
+            userContexts = userContexts,
+            action = ActionType.READ,
+            resource = project.toSecurityResource()
+        )
+
+        if (!canRead) {
+            throw SecurityException("Zugriff verweigert: Du hast keine Berechtigung, dieses Projekt zu lesen.")
+        }
+        return project.toDto()
     }
 
     @Transactional
-    fun createProject(dto: CreateProjectDto): ProjectDto {
+    fun createProject(userId: String, dto: CreateProjectDto): ProjectDto {
         // 🏗️ Wir wandeln das DTO um (das Team bleibt dabei komplett LEER)
         val projectEntity = convertToEntity(dto)
 
-        // ❌ KEIN automatischer OWNER mehr! Der Ersteller (z.B. Admin)
-        // wird NICHT ungefragt in das Projektteam gedrückt.
+        val userContexts = userContextResolver.resolveContexts(userId)
+
+        val canCreate = permissionService.hasPermission(
+            userContexts = userContexts,
+            action = ActionType.CREATE,
+            resource = projectEntity.toSecurityResource()
+        )
+
+        if (!canCreate) {
+            throw SecurityException("Zugriff verweigert: Du hast keine Berechtigung, dieses Projekt zu erzeugen.")
+        }
 
         return projectRepository.save(projectEntity).toDto()
     }
 
     @Transactional
-    fun updateProject(id: String, dto: CreateProjectDto): ProjectDto {
+    fun updateProject(userId: String, id: String, dto: ProjectDto): ProjectDto {
         val existingProject = projectRepository.findById(id)
             .orElseThrow { RuntimeException("Projekt mit ID $id nicht gefunden") }
 
-        // 1. 🛡️ DEINE IDEE: Wir retten die bestehenden Mitglieder aus der Zwischentabelle!
-        val existingMembers = projectMemberRepository.findByProjectId(id)
+        // 1. Alle Kontexte des Benutzers laden
+        val userContexts = userContextResolver.resolveContexts(userId)
 
-        // 2. Bestehende Meilensteine löschen (das soll so sein, weil das DTO neue liefert)
+        val canUpdate = permissionService.hasPermission(
+            userContexts = userContexts,
+            action = ActionType.UPDATE,
+            resource = existingProject.toSecurityResource()
+        )
+
+        if (!canUpdate) {
+            throw SecurityException("Zugriff verweigert: Du hast keine Berechtigung, dieses Projekt zu bearbeiten.")
+        }
+
+        // 3. Update-Logik durchführen...
+        val existingMembers = projectMemberRepository.findByProjectId(id)
         existingProject.milestones.clear()
 
-        // 3. Stammdaten aus dem DTO übernehmen
         existingProject.title = dto.title
         existingProject.area = dto.area
         existingProject.content = dto.content
         existingProject.status = dto.status
         existingProject.departmentId = dto.departmentId
 
-        // 4. Meilensteine neu mappen...
         dto.milestones.forEach { mDto ->
             val assignedUserEntity = mDto.assignedUserId?.let { userRepository.findById(it).orElse(null) }
             val mEntity = MilestoneEntity(
@@ -85,19 +146,27 @@ class ProjectService(
             existingProject.addMilestone(mEntity)
         }
 
-        // 5. 🛡️ DEINE IDEE TEIL 2: Wir weisen dem Projekt seine geretteten Mitglieder wieder zu!
         existingProject.teamMemberships.clear()
         existingProject.teamMemberships.addAll(existingMembers)
 
-        // 6. Jetzt speichern! Hibernate sieht die vollen Members und löscht absolut GAR NICHTS!
         return projectRepository.save(existingProject).toDto()
     }
 
     @Transactional
-    fun deleteProject(id: String) {
+    fun deleteProject(userId: String, id: String) {
         val project = projectRepository.findById(id)
             .orElseThrow { RuntimeException("Projekt mit ID $id wurde nicht gefunden.") }
+        val userContexts = userContextResolver.resolveContexts(userId)
 
+        val canDelete = permissionService.hasPermission(
+            userContexts = userContexts,
+            action = ActionType.DELETE,
+            resource = project.toSecurityResource()
+        )
+
+        if (!canDelete) {
+            throw SecurityException("Zugriff verweigert: Du hast keine Berechtigung, dieses Projekt zu löschen.")
+        }
         // 🎯 SOFT DELETE statt hard delete! Die KI behält ihre Meilenstein-Daten!
         project.status = "Zip"
         projectRepository.save(project)

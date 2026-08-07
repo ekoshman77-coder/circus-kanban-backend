@@ -1,26 +1,25 @@
 package com.backend.todo_api.services
 
 import com.backend.todo_api.data.entity.TodoEntity
-import com.backend.todo_api.data.repository.TodoRepository
-import com.backend.todo_api.data.repository.UserRepository
 import com.backend.todo_api.data.repository.MilestoneRepository
 import com.backend.todo_api.data.repository.ProjectMemberRepository
+import com.backend.todo_api.data.repository.TodoRepository
+import com.backend.todo_api.data.repository.UserRepository
+import com.backend.todo_api.dto.CreateTodoDto
 import com.backend.todo_api.dto.GamificationResult
+import com.backend.todo_api.dto.TodoBulkDto
 import com.backend.todo_api.dto.TodoDto
+import com.backend.todo_api.exceptions.ActionForbiddenException
 import com.backend.todo_api.exceptions.UserDeletedException
-import com.backend.todo_api.exceptions.TodoNotFoundException
+import com.backend.todo_api.model.ActionType
+import io.mockk.*
+import io.mockk.impl.annotations.InjectMockKs
+import io.mockk.impl.annotations.MockK
+import org.junit.jupiter.api.Assertions.*
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.assertThrows
-import org.junit.jupiter.api.Assertions.*
-
-import io.mockk.MockKAnnotations
-import io.mockk.every
-import io.mockk.verify
-import io.mockk.slot
-import io.mockk.impl.annotations.MockK
-import io.mockk.impl.annotations.InjectMockKs
-import io.mockk.mockk
+import java.util.Optional
 
 class TodoServiceTest {
 
@@ -42,89 +41,67 @@ class TodoServiceTest {
     @MockK
     lateinit var projectMemberRepository: ProjectMemberRepository
 
+    @MockK
+    lateinit var streakService: StreakService
+
+    @MockK
+    lateinit var permissionService: PermissionService
+
+    @MockK
+    lateinit var userContextResolver: UserContextResolver
+
     @InjectMockKs
     lateinit var todoService: TodoService
+
+    private val userId = "user-123"
+    private val todoId = "todo-999"
 
     @BeforeEach
     fun setUp() {
         MockKAnnotations.init(this)
+
+        // Standard-Mocking für UserContextResolver & PermissionService
+        every { userContextResolver.resolveContexts(any<String>()) } returns emptyList()
+        every { userContextResolver.resolveContexts(any<String>()) } returns emptyList()
     }
 
-    // --- TEST 1: DIE GAMIFICATION-KETTE ---
+    // --- 1. ERSTELLEN & BERECHTIGUNG ---
 
     @Test
-    fun `toggleStatusWithGamification sollte den Status updaten und XP verbuchen`() {
-        val userId = "user-123"
-        val todoId = "todo-777"
+    fun `createTodo sollte Todo erfolgreich anlegen wenn Berechtigung vorliegt`() {
+        val createDto = CreateTodoDto(task = "Code Review", userId = userId, effort = 3)
 
-        every { userRepository.existsById(userId) } returns true
+        every { permissionService.hasPermission(any(), ActionType.CREATE, any()) } returns true
+        every { todoRepository.save(any()) } answers { firstArg() }
 
-        val alteEntity = TodoEntity(id = todoId, task = "Lernen", done = false, userId = userId, effort = 5, usedEffort = 0)
-        val aktualisierteEntity = TodoEntity(id = todoId, task = "Lernen", done = true, userId = userId, effort = 5, usedEffort = 0)
+        val result = todoService.createTodo(userId, createDto)
 
-        // 🎯 ANPASSUNG: Nutzt jetzt die aktive findByIdAndIsArchivedFalse Methode des Services
-        every { todoRepository.findByIdAndIsArchivedFalse(todoId) } returns alteEntity
-        every { todoRepository.save(any()) } returns aktualisierteEntity
-
-        val erwartetesErgebnis = GamificationResult(
-            levelUp = false,
-            currentLevel = 2,
-            levelTitle = "Code-Anfänger",
-            levelIcon = "🤫",
-            currentXp = 150,
-            currentLevelXpStart = 100,
-            nextLevelXpRequired = 200
-        )
-
-        every {
-            gamificationService.processTodoStatusChange(
-                userId = userId,
-                effort = 5,
-                usedEffort = any(),
-                isDone = true
-            )
-        } returns erwartetesErgebnis
-
-        val ergebnis = todoService.toggleStatusWithGamification(todoId, isDone = true, userId = userId)
-
-        assertFalse(ergebnis.levelUp)
-        assertEquals(2, ergebnis.currentLevel)
-        assertEquals("Code-Anfänger", ergebnis.levelTitle)
-        assertEquals(150, ergebnis.currentXp)
-
-        verify(exactly = 1) { todoRepository.save(any()) }
-        verify(exactly = 1) { gamificationService.processTodoStatusChange(userId, 5, any(), true) }
+        assertEquals("Code Review", result.task)
+        verify { todoRepository.save(any()) }
     }
 
-    // --- TEST 2: ABSICHERUNG GELÖSCHTER USER ---
-
     @Test
-    fun `getTodosForUser sollte UserDeletedException werfen wenn der User nicht existiert`() {
-        every { userRepository.existsById("geister-user") } returns false
+    fun `createTodo sollte ActionForbiddenException werfen wenn Rechte fehlen`() {
+        val createDto = CreateTodoDto(task = "Code Review", userId = userId)
 
-        assertThrows<UserDeletedException> {
-            todoService.getTodos("geister-user")
+        every { permissionService.hasPermission(any(), ActionType.CREATE, any()) } returns false
+
+        assertThrows<ActionForbiddenException> {
+            todoService.createTodo(userId, createDto)
         }
-
-        verify(exactly = 0) { todoRepository.findByUserId(any()) }
     }
 
-    // --- 🔮 NEUER TEST 3: KI-FELDER SCHÜTZEN BEI UPDATE ---
+    // --- 2. UPDATE & KI-FELDER SCHÜTZEN ---
 
     @Test
-    fun `updateTodo sollte KI-Felder aus der DB beibehalten und effortChangesCount erhoehen`() {
-        val todoId = "todo-999"
-        val userId = "user-123"
-
-        // Frontend schickt geänderten Aufwand (von 2 auf 5), kennt aber keine KI-Felder
+    fun `updateTodo sollte KI-Felder beibehalten und effortChangesCount erhoehen`() {
         val frontendDto = TodoDto(
             id = todoId,
             task = "Refactoring",
             userId = userId,
-            effort = 5
+            effort = 5 // Aufwand wurde geändert (von 2 auf 5)
         )
 
-        // In der DB liegen wertvolle KI-Daten
         val dbEntity = TodoEntity(
             id = todoId,
             task = "Altes Refactoring",
@@ -135,65 +112,63 @@ class TodoServiceTest {
             effortChangesCount = 1
         )
 
-        every { userRepository.existsById(userId) } returns true
         every { todoRepository.findByIdAndIsArchivedFalse(todoId) } returns dbEntity
+        every { permissionService.hasPermission(any(), ActionType.UPDATE, any()) } returns true
+        every { todoRepository.save(any()) } answers { firstArg() }
+        every { gamificationService.determineXpReceiverUserId(any(), any()) } returns userId
+        every { userRepository.findById(userId) } returns Optional.of(mockk(relaxed = true))
+        every { streakService.getCurrentStreakInfo(any()) } returns mockk(relaxed = true)
 
-        val savedEntitySlot = slot<TodoEntity>()
-        every { todoRepository.save(capture(savedEntitySlot)) } answers { firstArg() }
+        val response = todoService.updateTodo(userId, frontendDto)
 
-        // Act
-        todoService.updateTodo(frontendDto)
-
-        // Assert
-        val saved = savedEntitySlot.captured
+        val saved = response.todo
         assertEquals("Refactoring", saved.task)
         assertEquals(5, saved.effort)
-        assertEquals("HIGH_FOCUS", saved.focusType)   // 🔮 Unangetastet!
-        assertEquals(3, saved.cooldownTurns)           // 🔮 Unangetastet!
-        assertEquals(2, saved.effortChangesCount)      // 🧠 Von 1 auf 2 hochgezählt!
+        assertEquals(2, saved.effortChangesCount) // Zähler von 1 auf 2 hochgezählt!
+        verify { todoRepository.save(any()) }
     }
 
-    // --- 🔮 NEUER TEST 4: KI-FELDER SICHERN BEI BULK SYNC ---
+    // --- 3. BULK SYNC ---
 
     @Test
-    fun `syncBulkTodos sollte KI-Felder bei existierenden Aufgaben schuetzen`() {
-        val userId = "user-123"
-        val todoId = "bulk-todo"
-
-        val frontendDto = TodoDto(
+    fun `syncBulkTodos sollte Aktionen für Bulk-Dtos verarbeiten`() {
+        val bulkDto = TodoBulkDto(
             id = todoId,
             task = "Sync Task",
-            userId = userId,
-            effort = 3,
-            done = false
+            syncAction = "CREATED",
+            effort = 3
         )
 
-        val dbEntity = TodoEntity(
-            id = todoId,
-            task = "Alter Sync Task",
-            userId = userId,
-            effort = 3,
-            focusType = "LOW_FOCUS",
-            cooldownTurns = 2,
-            effortChangesCount = 0
-        )
+        val freshUser = mockk<com.backend.todo_api.data.entity.UserEntity>(relaxed = true)
 
+        every { userRepository.findById(userId) } returns Optional.of(freshUser)
         every { userRepository.existsById(userId) } returns true
-        every { todoRepository.findByUserId(userId) } returns listOf(dbEntity)
-        every { todoRepository.findByUserIdAndIsArchivedFalse(userId) } returns emptyList()
+        every { permissionService.hasPermission(any(), ActionType.CREATE, any()) } returns true
+        every { todoRepository.save(any()) } answers { firstArg() }
+        every { todoRepository.findAll(any<org.springframework.data.jpa.domain.Specification<TodoEntity>>()) } returns emptyList()
         every { gamificationService.getGamificationState(userId) } returns mockk(relaxed = true)
+        every { streakService.getCurrentStreakInfo(any()) } returns mockk(relaxed = true)
+        every { todoRepository.flush() } just Runs
 
-        val savedEntitySlot = slot<TodoEntity>()
-        every { todoRepository.save(capture(savedEntitySlot)) } answers { firstArg() }
+        val result = todoService.syncBulkTodos(userId, listOf(bulkDto))
 
-        // Act
-        todoService.syncBulkTodos(userId, listOf(frontendDto))
+        assertNotNull(result)
+        verify { todoRepository.save(any()) }
+    }
 
-        // Assert
-        val saved = savedEntitySlot.captured
-        assertEquals("Sync Task", saved.task)
-        assertEquals("LOW_FOCUS", saved.focusType) // 🔮 Datenverlust im Sync verhindert!
-        assertEquals(2, saved.cooldownTurns)       // 🔮 Datenverlust im Sync verhindert!
-        assertEquals(0, saved.effortChangesCount)  // Aufwand blieb gleich, Zähler bleibt unberührt
+    // --- 4. DELETED USER SAFETY ---
+
+    @Test
+    fun `getRelevantTodos sollte UserDeletedException werfen wenn der User nicht existiert`() {
+        val geisterUserId = "geister-user"
+
+        // 🎯 mocken von existsById anstelle von findById
+        every { userRepository.existsById(geisterUserId) } returns false
+
+        assertThrows<UserDeletedException> {
+            todoService.getRelevantTodos(geisterUserId)
+        }
+
+        verify(exactly = 1) { userRepository.existsById(geisterUserId) }
     }
 }

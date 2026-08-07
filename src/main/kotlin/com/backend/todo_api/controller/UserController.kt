@@ -5,6 +5,7 @@ import com.backend.todo_api.dto.OnRegisterOrLogin
 import com.backend.todo_api.dto.OnUpdate
 import com.backend.todo_api.dto.UserApproveDto
 import com.backend.todo_api.dto.UserDto
+import com.backend.todo_api.exceptions.ActionForbiddenException
 import com.backend.todo_api.exceptions.UserAlreadyExistsException
 import com.backend.todo_api.exceptions.UserNotFoundException
 import com.backend.todo_api.services.UserService
@@ -22,6 +23,7 @@ import org.springframework.security.core.context.SecurityContextHolder
 import org.springframework.security.web.context.HttpSessionSecurityContextRepository
 import org.springframework.validation.annotation.Validated
 import org.springframework.web.bind.annotation.*
+import java.security.Principal
 
 @RestController
 @RequestMapping("/api/users")
@@ -110,10 +112,12 @@ class UserController(private val userService: UserService) {
     ])
     fun updateProfile(
         @PathVariable id: String,
-        @Validated(OnUpdate::class) @RequestBody dto: UserDto
+        @Validated(OnUpdate::class) @RequestBody dto: UserDto,
+        principal: Principal
     ): ResponseEntity<Any> {
         return try {
-            val updatedUser = userService.updateUser(id, dto)
+            val currentUserId = principal.name
+            val updatedUser = userService.updateUser(currentUserId,id, dto)
             ResponseEntity.ok(updatedUser)
         } catch (e: UserNotFoundException) {
             ResponseEntity.status(HttpStatus.NOT_FOUND).body(mapOf("error" to e.message))
@@ -127,10 +131,14 @@ class UserController(private val userService: UserService) {
         ApiResponse(responseCode = "204", description = "Benutzer erfolgreich archiviert"),
         ApiResponse(responseCode = "404", description = "Benutzer-ID nicht gefunden")
     ])
-    fun deleteUser(@PathVariable id: String): ResponseEntity<Any> {
+    fun deleteUser(
+        @PathVariable id: String,
+        principal: Principal
+        ): ResponseEntity<Any> {
         return try {
+            val currentUserId = principal.name
             println("🗑️ [Backend-Controller] Soft-DELETE-Request erhalten für User-ID: $id")
-            userService.deleteUser(id)
+            userService.deleteUser(currentUserId,id)
             ResponseEntity.noContent().build()
         } catch (e: UserNotFoundException) {
             ResponseEntity.status(HttpStatus.NOT_FOUND).body(mapOf("error" to e.message))
@@ -138,37 +146,33 @@ class UserController(private val userService: UserService) {
     }
 
     @GetMapping("/unapproved")
-    @PreAuthorize("hasRole('ADMIN')")
-    @Operation(summary = "Warteraum abrufen", description = "Liefert eine Liste aller unbestätigten Benutzer zurück, die noch auf ihre Freischaltung warten (archivierte Benutzer ausgeschlossen).")
-    fun getUnapprovedUsers(): ResponseEntity<Any> {
-        return ResponseEntity.ok(userService.getUnapprovedUsers())
+    fun getUnapprovedUsers(principal: Principal): ResponseEntity<List<UserDto>> {
+        return ResponseEntity.ok(userService.getUnapprovedUsers(principal.name))
     }
 
     @GetMapping("/approved")
-    @PreAuthorize("hasRole('ADMIN')")
-    @Operation(summary = "Aktive Belegschaft abrufen", description = "Liefert eine Liste aller freigeschalteten, voll funktionsfähigen Mitarbeiter (archivierte Benutzer ausgeschlossen).")
-    fun getApprovedUsers(): ResponseEntity<Any> {
-        return ResponseEntity.ok(userService.getApprovedUsers())
+    fun getApprovedUsers(principal: Principal): ResponseEntity<List<UserDto>> {
+        return ResponseEntity.ok(userService.getApprovedUsers(principal.name))
     }
 
     @PostMapping("/{userId}/approve")
-    @PreAuthorize("hasRole('ADMIN')")
-    @Operation(summary = "User freischalten und Abteilung zuweisen", description = "Bestätigt das Benutzerkonto im Warteraum und ordnet es einer Abteilung im System zu.")
     fun approveUser(
         @PathVariable userId: String,
-        @Validated @RequestBody dto: UserApproveDto
-    ): ResponseEntity<Any> {
-        return ResponseEntity.ok(userService.approveUser(userId, dto))
+        @Validated @RequestBody dto: UserApproveDto,
+        principal: Principal
+    ): ResponseEntity<UserDto> {
+        return ResponseEntity.ok(userService.approveUser(principal.name, userId, dto))
     }
 
     @GetMapping("/status/{userId}")
     @PreAuthorize("authentication.name == @userService.getUserById(#userId).username")
     @Operation(summary = "Eigenen Freischaltungs-Status pollen", description = "Ermöglicht dem wartenden Client zu prüfen, ob der Account freigeschaltet wurde. Aktualisiert die Sitzung bei Erfolg live.")
     fun getUserStatus(
-        @PathVariable userId: String,
-        request: HttpServletRequest
+        request: HttpServletRequest,
+        principal: Principal
     ): ResponseEntity<UserDto> {
-        val userDto = userService.getUserById(userId)
+        val userId = principal.name
+        val userDto = userService.getUserById(userId,userId)
 
         if (userDto.isApproved) {
             val isUserAdmin = userService.isAdminDepartment(userDto.departmentId)

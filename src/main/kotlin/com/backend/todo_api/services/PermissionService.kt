@@ -1,11 +1,8 @@
 package com.backend.todo_api.services
 
 import com.backend.todo_api.constants.AppConstants
-import com.backend.todo_api.data.entity.ActionEntity
-import com.backend.todo_api.data.entity.ResourceEntity
 import com.backend.todo_api.data.entity.RoleEntity
 import com.backend.todo_api.data.entity.ScopeEntity
-import com.backend.todo_api.data.entity.UserEntity
 import com.backend.todo_api.data.repository.DepartmentRepository
 import com.backend.todo_api.data.repository.RolePermissionRepository
 import com.backend.todo_api.model.*
@@ -43,26 +40,20 @@ class PermissionService(
     fun hasPermission(
         userContexts: List<UserContext>,
         action: ActionType,
-        resourceContext: ResourceContext
+        resource: VisitableResource
     ): Boolean {
-        // Lädt alle Matrix-Regeln für diese Action und Resource
         val permissions = rolePermissionRepository.findByActionNameAndResourceName(
             action,
-            resourceContext.resource
+            resource.resourceType
         )
 
         for (userContext in userContexts) {
-            // Passt eine Regel in der Matrix zur Rolle und zum TargetScope des UserContexts?
             val hasMatchingPermission = permissions.any { perm ->
                 perm.role.id == userContext.role.id && perm.targetScope.name == userContext.scope.name
             }
 
-            if (hasMatchingPermission) {
-                // Wenn der Context global/firmenweit ist (scopeInstanceId == null) -> Erlaubt!
-                // Wenn der Context instanzgebunden ist -> IDs müssen übereinstimmen!
-                if (userContext.scopeInstanceId == null || userContext.scopeInstanceId == resourceContext.instanceId) {
-                    return true
-                }
+            if (hasMatchingPermission && resource.matchesScope(userContext)) {
+                return true
             }
         }
 

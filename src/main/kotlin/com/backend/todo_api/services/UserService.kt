@@ -16,10 +16,13 @@ import com.backend.todo_api.dto.CreateUserDto
 import com.backend.todo_api.dto.UserApproveDto
 import com.backend.todo_api.dto.UserDto
 import com.backend.todo_api.dto.copyToUserDto
+import com.backend.todo_api.exceptions.ActionForbiddenException
 import com.backend.todo_api.exceptions.UserAlreadyExistsException
 import com.backend.todo_api.exceptions.UserNotApprovedException
 import com.backend.todo_api.exceptions.UserNotFoundException
+import com.backend.todo_api.model.ActionType
 import com.backend.todo_api.model.RoleType
+import com.backend.todo_api.model.UserSecurityResource
 import com.backend.todo_api.model.toEntity
 import jakarta.transaction.Transactional
 import org.springframework.http.HttpStatus
@@ -36,7 +39,9 @@ class UserService(
     private val coffeeAccountRepository: CoffeeAccountRepository,
     private val passwordEncoder: org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder,
     private val departmentRepository: DepartmentRepository,
-    private val roleRepository: RoleRepository
+    private val roleRepository: RoleRepository,
+    private val permissionService: PermissionService,
+    private val userContextResolver: UserContextResolver
 ) {
 
     // 🔑 Login
@@ -114,17 +119,24 @@ class UserService(
     }
 
     @Transactional
-    fun updateUser(id: String, dto: UserDto): UserDto {
-        val userEntity = userRepository.findById(id).orElseThrow {
-            UserNotFoundException("Benutzer mit der ID $id wurde nicht gefunden.")
-        }
+    fun updateUser(currentUserId: String, targetUserId: String, dto: UserDto): UserDto {
 
-        // 🛡️ NEU: Änderungen an archivierten Benutzern blockieren
-        if (userEntity.isArchived) {
-            throw ResponseStatusException(
-                HttpStatus.CONFLICT,
-                "Operation abgelehnt: Archivierte Benutzer können nicht aktualisiert werden!"
+        val userEntity = userRepository.findByIdAndIsArchivedFalse(targetUserId)
+            ?: throw UserNotFoundException("Benutzer mit der ID $targetUserId wurde nicht gefunden.")
+
+        val userContexts = userContextResolver.resolveContexts(currentUserId)
+
+        val canAct = permissionService.hasPermission(
+            userContexts = userContexts,
+            action = ActionType.UPDATE,
+            resource = UserSecurityResource(
+                targetUserId = targetUserId,
+                departmentId =  userEntity.departmentId,
             )
+        )
+
+        if (!canAct) {
+            throw ActionForbiddenException("du kannst Daten des Users nicht ändern")
         }
 
         if (userEntity.isApproved != dto.isApproved) {
@@ -141,30 +153,42 @@ class UserService(
     }
 
     @Transactional
-    fun deleteUser(id: String) {
-        val userEntity = userRepository.findById(id).orElseThrow {
-            UserNotFoundException("Benutzer mit der ID $id wurde nicht gefunden.")
+    fun deleteUser(currentUserId: String, targetUserId: String) {
+        val userEntity = userRepository.findByIdAndIsArchivedFalse(targetUserId)
+            ?: throw UserNotFoundException("Benutzer mit der ID $targetUserId wurde nicht gefunden.")
+
+        val userContexts = userContextResolver.resolveContexts(currentUserId)
+
+        val canAct = permissionService.hasPermission(
+            userContexts = userContexts,
+            action = ActionType.DELETE,
+            resource = UserSecurityResource(
+                targetUserId = targetUserId,
+                departmentId =  userEntity.departmentId,
+            )
+        )
+
+        if (!canAct) {
+            throw ActionForbiddenException("du kannst Daten des Users nicht ändern")
         }
 
-        if (userEntity.isArchived) return
-
         // 1. Zuweisungen bei Team-Todos aufheben
-        val assignedTodos = todoRepository.findByAssignedUserId(id)
+        val assignedTodos = todoRepository.findByAssignedUserId(targetUserId)
         assignedTodos.forEach { todo -> todo.assignedUserId = null }
         todoRepository.saveAll(assignedTodos)
 
         // 2. Eigene private Todos archivieren (Nutzt das vorhandene isArchived in Todos!)
-        val privateTodos = todoRepository.findByUserId(id)
+        val privateTodos = todoRepository.findByUserId(targetUserId)
         privateTodos.forEach { todo -> todo.isArchived = true }
         todoRepository.saveAll(privateTodos)
 
         // 3. Meilensteine wieder freigeben
-        val assignedMilestones = milestoneRepository.findByAssignedUserId(id)
+        val assignedMilestones = milestoneRepository.findByAssignedUserId(targetUserId)
         assignedMilestones.forEach { milestone -> milestone.assignedUser = null }
         milestoneRepository.saveAll(assignedMilestones)
 
         // 4. Eigene Projekte auf Dummy-User umschreiben
-        val createdProjects = projectRepository.findByUserId(id)
+        val createdProjects = projectRepository.findByUserId(targetUserId)
         createdProjects.forEach { project -> project.userId = "DELETED_USER" }
         projectRepository.saveAll(createdProjects)
 
@@ -175,7 +199,7 @@ class UserService(
         userEntity.projectMemberships.clear()
 
         // 6. Planner Settings löschen (kann weg, da 1:1 Kopplung)
-        plannerSettingsRepository.deleteById(id)
+        plannerSettingsRepository.deleteById(targetUserId)
 
         // 🎯 7. Der Soft-Delete-Clou: Status auf archiviert setzen
         userEntity.isArchived = true
@@ -183,35 +207,93 @@ class UserService(
         userRepository.save(userEntity)
     }
 
-    fun getApprovedUsers(): List<UserDto> {
-        // 🚀 Nutzt deine neue Methode via map!
+    fun getApprovedUsers(currentUserId: String): List<UserDto> {
+        val userContexts = userContextResolver.resolveContexts(currentUserId)
+        val userResource = UserSecurityResource(targetUserId = currentUserId)
+
+        val hasAccess = permissionService.hasPermission(
+            userContexts = userContexts,
+            action = ActionType.READ,
+            resource = userResource
+        )
+
+        if (!hasAccess) {
+            throw ActionForbiddenException("Keine Berechtigung zum Abrufen der aktiven Benutzerliste.")
+        }
+
         return userRepository.findByIsApprovedAndIsArchivedFalse(true).map { copyToUserDto(it, UserDto()) }
     }
 
-    fun getUnapprovedUsers(): List<UserDto> {
-        // 🚀 Nutzt deine neue Methode via map!
+    // 📋 Für Admin Board: Unberechtigte/Wartende Benutzer abrufen (Warteraum)
+    fun getUnapprovedUsers(currentUserId: String): List<UserDto> {
+        val userContexts = userContextResolver.resolveContexts(currentUserId)
+        val userResource = UserSecurityResource(targetUserId = currentUserId)
+
+        val hasAccess = permissionService.hasPermission(
+            userContexts = userContexts,
+            action = ActionType.READ,
+            resource = userResource
+        )
+
+        if (!hasAccess) {
+            throw ActionForbiddenException("Keine Berechtigung zum Abrufen des Warteraums.")
+        }
+
         return userRepository.findByIsApprovedAndIsArchivedFalse(false).map { copyToUserDto(it, UserDto()) }
     }
 
+    // 👑 Admin schaltet Benutzer frei und weist Abteilung zu
     @Transactional
-    fun approveUser(userId: String, dto: UserApproveDto): UserDto {
-        val userEntity = userRepository.findById(userId).orElseThrow {
-            UserNotFoundException("Benutzer mit der ID $userId wurde nicht gefunden.")
+    fun approveUser(currentUserId: String, targetUserId: String, dto: UserApproveDto): UserDto {
+        val userContexts = userContextResolver.resolveContexts(currentUserId)
+
+        val targetUser = userRepository.findById(targetUserId).orElseThrow {
+            UserNotFoundException("Benutzer mit der ID $targetUserId wurde nicht gefunden.")
         }
 
-        userEntity.departmentId = dto.departmentId
-        userEntity.isApproved = true
+        // Da der targetUser noch keine Abteilung hat, übergeben wir null für die departmentId.
+        // Ein ADMIN schaltet dank COMPANY-Scope und UPDATE-Action auf USER sauber durch!
+        val userResource = UserSecurityResource(targetUserId = targetUserId, departmentId = null)
 
-        val savedUser = userRepository.save(userEntity)
+        val hasAccess = permissionService.hasPermission(
+            userContexts = userContexts,
+            action = ActionType.UPDATE,
+            resource = userResource
+        )
 
+        if (!hasAccess) {
+            throw ActionForbiddenException("Keine Berechtigung zum Freischalten von Benutzern.")
+        }
+
+        targetUser.departmentId = dto.departmentId
+        targetUser.isApproved = true
+
+        val savedUser = userRepository.save(targetUser)
         return copyToUserDto(savedUser, UserDto())
     }
 
-    fun getUserById(userId: String): UserDto {
-        val userEntity = userRepository.findById(userId)
-            .orElseThrow{ UserNotFoundException("Benutzer mit der ID $userId wurde nicht gefunden.") }
+    fun getUserById(currentUserId: String, targetUserId: String): UserDto {
+        val userEntity = userRepository.findByIdAndIsArchivedFalse(targetUserId)
+            ?: throw UserNotFoundException("Benutzer mit der ID $targetUserId wurde nicht gefunden.")
+
+        val userContexts = userContextResolver.resolveContexts(currentUserId)
+
+        val hasAccess = permissionService.hasPermission(
+            userContexts = userContexts,
+            action = ActionType.READ,
+            resource = UserSecurityResource(
+                targetUserId = targetUserId,
+                departmentId = userEntity.departmentId
+            )
+        )
+
+        if (!hasAccess) {
+            throw ActionForbiddenException("Du hast keine Berechtigung, die Profilinformationen dieses Benutzers einzusehen.")
+        }
+
         return copyToUserDto(userEntity, UserDto())
     }
+
     // 🛡️ Hilfsmethode für den Security-Stempel
     fun isAdminDepartment(departmentId: String?): Boolean {
         if (departmentId == null) return false

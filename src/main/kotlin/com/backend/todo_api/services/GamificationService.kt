@@ -1,5 +1,6 @@
 package com.backend.todo_api.services
 
+import com.backend.todo_api.data.entity.TodoEntity
 import com.backend.todo_api.data.entity.UserEntity
 import com.backend.todo_api.data.repository.UserRepository
 import com.backend.todo_api.data.repository.TodoRepository // Neu injizieren!
@@ -217,5 +218,38 @@ class GamificationService(
         val icon = fullTitleFromDb.substring(lastSpaceIndex + 1).trim()
 
         return Pair(title, icon)
+    }
+
+    /**
+    *  Ermittelt fair und diebstahlsicher, wer für ein Todo die XP erhält oder abgezogen bekommt.
+    */
+    fun determineXpReceiverUserId(todo: TodoEntity, currentUserId: String): String {
+        return when {
+            !todo.lastDeveloperId.isNullOrBlank() -> todo.lastDeveloperId!!
+            !todo.assignedUserId.isNullOrBlank() -> todo.assignedUserId!!
+            else -> currentUserId
+        }
+    }
+
+    /**
+     * Comfort-Methode: Verarbeitet Statusänderungen direkt für eine TodoEntity
+     * und ermittelt den richtigen XP-Empfänger automatisch!
+     */
+    @Transactional
+    fun processTodoStatusChange(
+        todo: TodoEntity,
+        currentUserId: String,
+        isDone: Boolean
+    ): GamificationResult {
+        // 1. Fair den echten Empfänger bestimmen
+        val targetUserId = determineXpReceiverUserId(todo, currentUserId)
+
+        // 2. Die eigentliche XP-Berechnung mit der Ziel-UserId ausführen
+        return processTodoStatusChange(
+            userId = targetUserId,
+            effort = todo.effort,
+            usedEffort = todo.usedEffort,
+            isDone = isDone
+        )
     }
 }

@@ -16,14 +16,14 @@ class UserContextResolver(
     private val roleRepository: RoleRepository,
     private val departmentRepository: DepartmentRepository
 ) {
-    fun resolveContexts(userId: String): List<UserContext> {
+    fun resolveContexts(userId: String, ignoredRoleTypes: List<RoleType> = emptyList()): List<UserContext> {
         val user = userRepository.findById(userId).orElseThrow {
             UserDeletedException("User mit ID $userId existiert nicht.")
         }
-        return this.resolveContexts(user)
+        return this.resolveContexts(user, ignoredRoleTypes)
     }
 
-    fun resolveContexts(user: UserEntity): List<UserContext> {
+    fun resolveContexts(user: UserEntity, ignoredRoleTypes: List<RoleType> = emptyList()): List<UserContext> {
         // 0. Sicherheits-Check: Nicht freigeschaltete User bekommen keinerlei Rechte
         if (!user.isApproved) {
             println("⚠️ [UserContextResolver] Zugriff verweigert: User ${user.id} (${user.username}) ist noch nicht geapprovt.")
@@ -34,15 +34,16 @@ class UserContextResolver(
 
         // 1. Eigene Ressourcen-Ebene (RESOURCE)
         val ownerRole = roleRepository.findByName(RoleType.OWNER)
-            ?: throw IllegalStateException("System-Rolle OWNER fehlt in der Datenbank!")
 
-        contexts.add(
-            UserContext(
-                scope = ownerRole.scope,
-                scopeInstanceId = user.id,
-                role = ownerRole
+        if (ownerRole != null) {
+            contexts.add(
+                UserContext(
+                    scope = ownerRole.scope,
+                    scopeInstanceId = user.id,
+                    role = ownerRole
+                )
             )
-        )
+        }
 
         // 2. Abteilungs-Ebene (DEPARTMENT / LOCATION / COMPANY)
         val deptId = user.departmentId
@@ -80,6 +81,10 @@ class UserContextResolver(
                     role = membership.role
                 )
             )
+        }
+
+        if (ignoredRoleTypes.isNotEmpty()) {
+            return contexts.filterNot { context -> ignoredRoleTypes.contains(context.role.name) }
         }
 
         return contexts

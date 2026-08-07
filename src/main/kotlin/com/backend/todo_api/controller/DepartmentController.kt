@@ -7,6 +7,7 @@ import io.swagger.v3.oas.annotations.tags.Tag
 import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
 import org.springframework.web.bind.annotation.*
+import java.security.Principal
 
 @RestController
 @RequestMapping("/api/departments")
@@ -16,15 +17,16 @@ class DepartmentController(private val departmentService: DepartmentService) {
 
     @GetMapping
     @Operation(summary = "Alle Abteilungen abrufen")
-    fun getAllDepartments(): ResponseEntity<List<DepartmentDto>> {
-        return ResponseEntity.ok(departmentService.getAllDepartments())
+    fun getAllDepartments(principal: Principal): ResponseEntity<List<DepartmentDto>> {
+        val userId = principal.name
+        return ResponseEntity.ok(departmentService.getAllDepartments(userId))
     }
 
     @PostMapping
     @Operation(summary = "Neue Abteilung erstellen")
-    fun createDepartment(@RequestBody dto: DepartmentDto): ResponseEntity<DepartmentDto> {
-        
-        val created = departmentService.createDepartment(dto)
+    fun createDepartment(@RequestBody dto: DepartmentDto, principal: Principal): ResponseEntity<DepartmentDto> {
+        val userId = principal.name
+        val created = departmentService.createDepartment(userId,dto)
         return ResponseEntity.status(HttpStatus.CREATED).body(created)
     }
 
@@ -32,16 +34,19 @@ class DepartmentController(private val departmentService: DepartmentService) {
     @Operation(summary = "Abteilung umbenennen")
     fun updateDepartment(
         @PathVariable id: String,
-        @RequestBody dto: DepartmentDto
+        @RequestBody dto: DepartmentDto,
+        principal: Principal
     ): ResponseEntity<DepartmentDto> {
-        val updated = departmentService.updateDepartment(id, dto.name)
+        val userId = principal.name
+        val updated = departmentService.updateDepartment(userId, id, dto.name)
         return ResponseEntity.ok(updated)
     }
 
     @DeleteMapping("/{id}")
     @Operation(summary = "Abteilung löschen")
-    fun deleteDepartment(@PathVariable id: String): ResponseEntity<Void> {
-        departmentService.deleteDepartment(id)
+    fun deleteDepartment(@PathVariable id: String, principal: Principal): ResponseEntity<Void> {
+        val userId = principal.name
+        departmentService.deleteDepartment(userId, id)
         return ResponseEntity.noContent().build()
     }
 }

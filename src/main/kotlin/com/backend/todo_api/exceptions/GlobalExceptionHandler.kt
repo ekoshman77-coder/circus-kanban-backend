@@ -64,4 +64,11 @@ class GlobalExceptionHandler {
     fun handleUserNotApproved(ex: UserNotApprovedException) =
         ResponseEntity.status(HttpStatus.FORBIDDEN) // 🛡️ 403 Forbidden für den Warteraum!
             .body(ErrorResponse(ErrorCode.USER_NOT_APPROVED, ex.message))
+
+    // 🛡️ 403 Forbidden für fehlende Rechte im Permissionsystem!
+    @ExceptionHandler(ActionForbiddenException::class)
+    fun handleActionForbidden(ex: ActionForbiddenException) =
+        ResponseEntity.status(HttpStatus.FORBIDDEN) // 🛡️ 403 Forbidden für den Warteraum!
+            .body(ErrorResponse(ErrorCode.FORBIDDEN, ex.message))
+
 }

@@ -7,8 +7,11 @@ import com.backend.todo_api.data.repository.ScopeRepository
 import com.backend.todo_api.data.repository.UserRepository
 import com.backend.todo_api.dto.DepartmentDto
 import com.backend.todo_api.dto.toDto
-import com.backend.todo_api.model.ScopeType
+import com.backend.todo_api.exceptions.ActionForbiddenException
+import com.backend.todo_api.model.ActionType
+import com.backend.todo_api.model.DepartmentSecurityResource
 import com.backend.todo_api.model.toEntity
+import com.backend.todo_api.model.toSecurityResource
 import jakarta.transaction.Transactional
 import org.springframework.stereotype.Service
 
@@ -16,45 +19,87 @@ import org.springframework.stereotype.Service
 class DepartmentService(
     private val departmentRepository: DepartmentRepository,
     private val userRepository: UserRepository,
-    private val scopeRepository: ScopeRepository
+    private val scopeRepository: ScopeRepository,
+    private val userContextResolver: UserContextResolver,
+    private val permissionService: PermissionService
     )
 {
 
     // 📋 Gibt jetzt eine Liste von DTOs zurück
-    fun getAllDepartments(): List<DepartmentDto> {
-        return departmentRepository.findAll().map { it.toDto() }
+    fun getAllDepartments(userId: String): List<DepartmentDto> {
+        val userContexts = userContextResolver.resolveContexts(userId)
+        val allDepartments = departmentRepository.findAll()
+
+        return allDepartments
+            .filter { dept ->
+                permissionService.hasPermission(
+                    userContexts = userContexts,
+                    action = ActionType.READ,
+                    resource = dept.toSecurityResource()
+                )
+            }
+            .map { it.toDto() }
     }
 
     // ✨ Erstellt eine Abteilung und gibt das DTO zurück
     @Transactional
-    fun createDepartment(departmentDto: DepartmentDto): DepartmentDto {
+    fun createDepartment(userId: String, departmentDto: DepartmentDto): DepartmentDto {
+        val userContexts = userContextResolver.resolveContexts(userId)
+
+        // Konkrete Resource mit der Ziel-ID (falls angegeben) oder für die geplante Abteilung bilden
+        val targetResource = DepartmentSecurityResource(departmentId = departmentDto.id.ifBlank { null })
+
+        val canCreate = permissionService.hasPermission(
+            userContexts = userContexts,
+            action = ActionType.CREATE,
+            resource = targetResource
+        )
+
+        if (!canCreate) {
+            throw ActionForbiddenException("Zugriff verweigert: Du hast keine Berechtigung, diese Abteilung zu erstellen.")
+        }
+
         val trimmedName = departmentDto.name.trim()
         if (departmentRepository.findByNameIgnoreCase(trimmedName) != null) {
-            throw RuntimeException("Eine Abteilung mit dem Namen '$trimmedName' existiert bereits.")
+            throw IllegalArgumentException("Eine Abteilung mit dem Namen '$trimmedName' existiert bereits.")
         }
+
         val savedEntity = departmentRepository.save(
             DepartmentEntity(
-                                    name = trimmedName,
-                                    defaultScope = departmentDto.scope.toEntity(scopeRepository))
+                name = trimmedName,
+                defaultScope = departmentDto.scope.toEntity(scopeRepository)
+            )
         )
         return savedEntity.toDto()
     }
 
     // 📝 Nimmt IDs und Strings, gibt DTO zurück (mit Systemschutz)
     @Transactional
-    fun updateDepartment(id: String, newName: String): DepartmentDto {
+    fun updateDepartment(userId: String, id: String, newName: String): DepartmentDto {
         val department = departmentRepository.findById(id).orElseThrow {
-            RuntimeException("Abteilung mit der ID $id nicht gefunden.")
+            IllegalArgumentException("Abteilung mit der ID $id nicht gefunden.")
+        }
+
+        val userContexts = userContextResolver.resolveContexts(userId)
+
+        val canUpdate = permissionService.hasPermission(
+            userContexts = userContexts,
+            action = ActionType.UPDATE,
+            resource = department.toSecurityResource()
+        )
+
+        if (!canUpdate) {
+            throw ActionForbiddenException("Zugriff verweigert: Du hast keine Berechtigung, diese Abteilung zu bearbeiten.")
         }
 
         if (department.name.equals(AppConstants.ADMIN_DEPARTMENT_NAME, ignoreCase = true)) {
-            throw RuntimeException("Die System-Abteilung '${AppConstants.ADMIN_DEPARTMENT_NAME}' darf nicht umbenannt werden!")
+            throw IllegalArgumentException("Die System-Abteilung '${AppConstants.ADMIN_DEPARTMENT_NAME}' darf nicht umbenannt werden!")
         }
 
         val trimmedName = newName.trim()
         val existing = departmentRepository.findByNameIgnoreCase(trimmedName)
         if (existing != null && existing.id != id) {
-            throw RuntimeException("Eine andere Abteilung heißt bereits '$trimmedName'.")
+            throw IllegalArgumentException("Eine andere Abteilung heißt bereits '$trimmedName'.")
         }
 
         department.name = trimmedName
@@ -64,18 +109,30 @@ class DepartmentService(
 
     // 🗑️ Löschen bleibt bei Unit/void, nutzt aber intern den Schutz
     @Transactional
-    fun deleteDepartment(id: String) {
+    fun deleteDepartment(userId: String, id: String) {
         val department = departmentRepository.findById(id).orElseThrow {
-            RuntimeException("Abteilung mit der ID $id nicht gefunden.")
+            IllegalArgumentException("Abteilung mit der ID $id nicht gefunden.")
+        }
+
+        val userContexts = userContextResolver.resolveContexts(userId)
+
+        val canDelete = permissionService.hasPermission(
+            userContexts = userContexts,
+            action = ActionType.DELETE,
+            resource = department.toSecurityResource()
+        )
+
+        if (!canDelete) {
+            throw ActionForbiddenException("Zugriff verweigert: Du hast keine Berechtigung, diese Abteilung zu löschen.")
         }
 
         if (department.name.equals(AppConstants.ADMIN_DEPARTMENT_NAME, ignoreCase = true)) {
-            throw RuntimeException("Die System-Abteilung '${AppConstants.ADMIN_DEPARTMENT_NAME}' kann nicht gelöscht werden!")
+            throw IllegalArgumentException("Die System-Abteilung '${AppConstants.ADMIN_DEPARTMENT_NAME}' kann nicht gelöscht werden!")
         }
 
         val usersInDepartment = userRepository.findByIsApprovedAndDepartmentIdAndIsArchivedFalse(true, departmentId = department.id)
         if (usersInDepartment.isNotEmpty()) {
-            throw RuntimeException("Die Abteilung kann nicht gelöscht werden, da ihr noch Mitarbeiter zugeordnet sind.")
+            throw IllegalStateException("Die Abteilung kann nicht gelöscht werden, da ihr noch Mitarbeiter zugeordnet sind.")
         }
 
         departmentRepository.deleteById(id)

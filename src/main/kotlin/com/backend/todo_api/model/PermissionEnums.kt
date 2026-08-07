@@ -1,7 +1,11 @@
 package com.backend.todo_api.model
 
+import com.backend.todo_api.data.entity.ActionEntity
+import com.backend.todo_api.data.entity.ResourceEntity
 import com.backend.todo_api.data.entity.RoleEntity
 import com.backend.todo_api.data.entity.ScopeEntity
+import com.backend.todo_api.data.repository.ActionRepository
+import com.backend.todo_api.data.repository.ResourceRepository
 import com.backend.todo_api.data.repository.RoleRepository
 import com.backend.todo_api.data.repository.ScopeRepository
 
@@ -14,6 +18,11 @@ enum class ResourceType {
     DEPARTMENT
 }
 
+fun ResourceType.toEntity(resourceRepository: ResourceRepository): ResourceEntity {
+    return resourceRepository.findByName(this)
+        ?: throw IllegalStateException("Kritischer Fehler: Resource $this existiert nicht in der Datenbank!")
+}
+
 // 2. Alle verfügbaren Aktionen
 enum class ActionType {
     READ,
@@ -21,6 +30,11 @@ enum class ActionType {
     UPDATE,
     DELETE,
     EXECUTE
+}
+
+fun ActionType.toEntity(actionRepository: ActionRepository): ActionEntity {
+    return actionRepository.findByName(this)
+        ?: throw IllegalStateException("Kritischer Fehler: Action $this existiert nicht in der Datenbank!")
 }
 
 // 3. Alle verfügbaren Hierarchie-Scopes

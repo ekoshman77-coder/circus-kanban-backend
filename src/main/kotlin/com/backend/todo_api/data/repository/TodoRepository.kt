@@ -3,14 +3,15 @@ package com.backend.todo_api.data.repository
 import com.backend.todo_api.data.entity.TodoEntity
 import jakarta.transaction.Transactional
 import org.springframework.data.jpa.repository.JpaRepository
+import org.springframework.data.jpa.repository.JpaSpecificationExecutor
 import org.springframework.data.jpa.repository.Modifying
 import org.springframework.data.jpa.repository.Query
 import org.springframework.data.repository.query.Param
 import org.springframework.stereotype.Repository
 
 @Repository
-interface TodoRepository : JpaRepository<TodoEntity, String> {
-    // Das "String" am Ende sagt Spring Boot, dass der Primärschlüssel (die ID) ein Text ist.
+interface TodoRepository : JpaRepository<TodoEntity, String>, JpaSpecificationExecutor<TodoEntity> {
+
     @Transactional
     fun deleteByDone(done: Boolean)
     @Transactional
@@ -137,4 +138,5 @@ interface TodoRepository : JpaRepository<TodoEntity, String> {
       AND t.milestoneId <> ''
 """)
     fun findActiveTeamTodosForUser(@Param("userId") userId: String): List<TodoEntity>
+    fun findByUserIdAndMilestoneIdIsNullAndIsArchivedFalse(userId: String): List<TodoEntity>
 }

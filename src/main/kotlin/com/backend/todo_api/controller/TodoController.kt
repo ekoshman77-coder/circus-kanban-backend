@@ -15,6 +15,7 @@ import io.swagger.v3.oas.annotations.tags.Tag
 import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
 import org.springframework.web.bind.annotation.*
+import java.security.Principal
 
 @RestController
 @RequestMapping("/api/todos")
@@ -30,8 +31,9 @@ class TodoController(private val todoService: TodoService) {
     ])
     fun getTodos(
         @Parameter(description = "Die eindeutige ID des eingeloggten Users", required = false)
-        @RequestParam userId: String?
-    ): ResponseEntity<List<TodoDto>> { // 🌟 Typisiert auf List<TodoDto>
+        principal: Principal
+    ): ResponseEntity<List<TodoDto>> {
+        val userId = principal.name
         return ResponseEntity.ok(todoService.getTodos(userId))
     }
 
@@ -41,8 +43,12 @@ class TodoController(private val todoService: TodoService) {
         ApiResponse(responseCode = "201", description = "To-Do erfolgreich erstellt"),
         ApiResponse(responseCode = "400", description = "Fehlende userId im JSON-Body")
     ])
-    fun createTodo(@RequestBody dto: CreateTodoDto): ResponseEntity<TodoDto> { // 🌟 Typisiert auf TodoDto
-        return ResponseEntity.status(HttpStatus.CREATED).body(todoService.createTodo(dto))
+    fun createTodo(
+        @RequestBody dto: CreateTodoDto,
+        principal: Principal
+        ): ResponseEntity<TodoDto> {
+        val userId = principal.name
+        return ResponseEntity.status(HttpStatus.CREATED).body(todoService.createTodo(userId, dto))
     }
 
     @PutMapping("/{id}")
@@ -54,18 +60,23 @@ class TodoController(private val todoService: TodoService) {
     ])
     fun updateTodo(
         @PathVariable id: String,
-        @RequestBody dto: TodoDto
+        @RequestBody dto: TodoDto,
+        principal: Principal
     ): ResponseEntity<TodoUpdateResponse> { // 🌟 Typisiert auf TodoDto
         if (id.isBlank()) {
             return ResponseEntity.badRequest().build()
         }
-        val result = todoService.updateTodo( dto );
+        val userId = principal.name
+        val result = todoService.updateTodo(userId, dto );
         return ResponseEntity.ok(result)
     }
 
     @PostMapping("/completed") // 🌟 Geändert zu PostMapping
     @Operation(summary = "Erledigte private Aufgaben eines Users löschen (wird archiviert)")
-    fun deleteCompleted(@RequestParam userId: String?): ResponseEntity<Map<String, String>> {
+    fun deleteCompleted(
+        principal: Principal
+        ): ResponseEntity<Map<String, String>> {
+        val userId = principal.name
         if (userId.isNullOrBlank()) {
             return ResponseEntity.badRequest().build()
         }
@@ -76,7 +87,10 @@ class TodoController(private val todoService: TodoService) {
 
     @PostMapping("/all") // 🌟 Geändert zu PostMapping
     @Operation(summary = "Alle privaten Aufgaben eines Users löschen (wird archiviert)")
-    fun deleteAll(@RequestParam userId: String?): ResponseEntity<Map<String, String>> {
+    fun deleteAll(
+        principal: Principal
+    ): ResponseEntity<Map<String, String>> {
+        val userId = principal.name
         if (userId.isNullOrBlank()) {
             return ResponseEntity.badRequest().build()
         }
@@ -87,17 +101,22 @@ class TodoController(private val todoService: TodoService) {
 
     @DeleteMapping("/{id}")
     @Operation(summary = "Einzelnes To-Do löschen", description = "Löscht eine spezifische Aufgabe anhand ihrer ID.")
-    fun deleteTodo(@PathVariable id: String): ResponseEntity<Void> {
-        todoService.deleteTodoById(id)
+    fun deleteTodo(
+        @PathVariable id: String,
+        principal: Principal
+    ): ResponseEntity<Void> {
+        val userId = principal.name
+        todoService.deleteTodoById(userId, id)
         return ResponseEntity.noContent().build()
     }
 
     @PostMapping("/bulk")
     @Operation(summary = "Offline-Synchronisation (Bulk-Sync)", description = "Gleicht die Offline-Liste ab und berechnet gesammelte Punkte.")
     fun syncBulk(
-        @RequestParam userId: String,
-        @RequestBody offlineTodos: List<TodoBulkDto>
+        @RequestBody offlineTodos: List<TodoBulkDto>,
+        principal: Principal
     ): ResponseEntity<SyncResultDto> { // 🌟 Typ angepasst!
+        val userId = principal.name
         if (userId.isNullOrBlank()) {
             return ResponseEntity.badRequest().build()
         }
@@ -111,9 +130,10 @@ class TodoController(private val todoService: TodoService) {
         description = "Gibt alle Aufgaben eines Users zurück, die an einen bestimmten Meilenstein gekoppelt sind."
     )
     fun getTodosByMilestone(
-        @RequestParam(required = false) userId: String?,
-        @PathVariable milestoneId: String
+        @PathVariable milestoneId: String,
+        principal: Principal
     ): ResponseEntity<List<TodoDto>> {
+        val userId = principal.name
         val todos = todoService.getTodosByMilestone(userId, milestoneId)
         return ResponseEntity.ok(todos)
     }
@@ -124,9 +144,10 @@ class TodoController(private val todoService: TodoService) {
      */
     @GetMapping("/relevant")
     fun getRelevantTodos(
-        @RequestParam userId: String,
-        @RequestParam(defaultValue = "30") daysLookback: Int
+        @RequestParam(defaultValue = "30") daysLookback: Int,
+        principal: Principal
     ): ResponseEntity<List<TodoDto>> {
+        val userId = principal.name
         val todos = todoService.getRelevantTodos(userId, daysLookback)
         return ResponseEntity.ok(todos)
     }

@@ -9,7 +9,7 @@ open class CreateTodoDto(
     val effort: Int = 0,
     val usedEffort: Int = 0,
     val createdAt: Long = 0,
-    val userId: String = "",
+    var userId: String = "",
     val category: String = "Allgemein",
     val milestoneId: String? = null,
     val assignedUserId: String? = null,

@@ -8,7 +8,8 @@ enum class ErrorCode(val value: String) {
     INVALID_DATA("INVALID_DATA"),
     WRONG_ENDPOINT("WRONG_ENDPOINT"),
     PROJECT_NOT_FOUND("PROJECT_NOT_FOUND"),
-    TEAM_VALIDATION_ERROR("TEAM_VALIDATION_ERROR")
+    TEAM_VALIDATION_ERROR("TEAM_VALIDATION_ERROR"),
+    FORBIDDEN("ACTION_FORBIDDEN")
 }
 
 data class ErrorResponse(
@@ -28,3 +29,4 @@ class UserAlreadyExistsException(message: String) : RuntimeException(message)
 class UserNotFoundException(message: String) : RuntimeException(message)
 class UserNotApprovedException(message: String): RuntimeException(message)
 class UserDepartmentNotFoundException(message: String): RuntimeException(message)
+class ActionForbiddenException(message: String): RuntimeException(message)

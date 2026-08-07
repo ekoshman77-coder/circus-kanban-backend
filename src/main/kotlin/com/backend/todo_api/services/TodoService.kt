@@ -1,8 +1,10 @@
 package com.backend.todo_api.services
 
 import com.backend.todo_api.data.entity.TodoEntity
+import com.backend.todo_api.data.repository.MilestoneRepository
 import com.backend.todo_api.data.repository.TodoRepository
 import com.backend.todo_api.data.repository.UserRepository
+import com.backend.todo_api.data.repository.specifications.TodoSpecifications
 import com.backend.todo_api.dto.CreateTodoDto
 import com.backend.todo_api.dto.GamificationResult
 import com.backend.todo_api.dto.QuickPanelMode
@@ -10,9 +12,14 @@ import com.backend.todo_api.dto.SyncResultDto
 import com.backend.todo_api.dto.TodoBulkDto
 import com.backend.todo_api.dto.TodoDto
 import com.backend.todo_api.dto.TodoUpdateResponse
+import com.backend.todo_api.exceptions.ActionForbiddenException
 import com.backend.todo_api.exceptions.TodoNotFoundException
+import com.backend.todo_api.model.ActionType
 import com.backend.todo_api.model.AiContextType
 import com.backend.todo_api.model.FocusType
+import com.backend.todo_api.model.RoleType
+import com.backend.todo_api.model.ScopeType
+import com.backend.todo_api.model.TodoSecurityResource
 import com.backend.todo_api.providers.AiGlobalDataProvider
 import com.backend.todo_api.utils.AiTextUtil
 import org.springframework.stereotype.Service
@@ -27,7 +34,10 @@ class TodoService (
     private val userRepository: UserRepository,
     private val gamificationService: GamificationService,
     private val milestoneService: MilestoneService,
-    private val streakService: StreakService
+    private val milestoneRepository: MilestoneRepository,
+    private val streakService: StreakService,
+    private val permissionService: PermissionService,
+    private val userContextResolver: UserContextResolver
 ) {
     // 1. NEUERSTELLUNG: Wandelt CreateTodoDto in eine neue Entity um und initialisiert versteckte Felder
     private fun mapToNewEntity(dto: CreateTodoDto): TodoEntity {
@@ -67,7 +77,7 @@ class TodoService (
         existingEntity.dueDate = dto.dueDate
         existingEntity.completedAt = dto.completedAt
         existingEntity.category = dto.category
-        existingEntity.milestoneId = dto.milestoneId
+        existingEntity.milestoneId = dto.milestoneId?.ifBlank { null }
         existingEntity.assignedUserId = dto.assignedUserId
         existingEntity.isStarted = dto.isStarted
         existingEntity.teamStatus = dto.teamStatus
@@ -106,7 +116,7 @@ class TodoService (
         return "KI-Archiv-Status: $archivedCount archivierte Todos von insgesamt $totalCount Datensätzen sind für die KI bereit."
     }
 
-    // 1. GET (Frontend-Sicht): Nutzt deine neue, effiziente DB-Methode
+    // TODO: Prüfen, ob getTodos noch vom Frontend aufgerufen wird
     fun getTodos(userId: String?): List<TodoDto> {
         if (userId != null) {
             validateUserExists(userId, userRepository)
@@ -122,37 +132,86 @@ class TodoService (
      * Validiert zuerst den User, um verwaiste Sessions sofort zu kicken.
      */
     fun getRelevantTodos(userId: String, daysLookback: Int = 30): List<TodoDto> {
-        // 🛡️ SICHERHEITS-CHECK: Existiert der User noch in der Datenbank?
         validateUserExists(userId, userRepository)
 
-        // 1. Zeitstempel für das Ausblenden alter, erledigter Aufgaben berechnen
+        // 1. Cutoff-Date berechnen (z. B. JETZT minus 30 Tage in Millisekunden)
         val cutoffDate = System.currentTimeMillis() - (daysLookback.toLong() * 24 * 60 * 60 * 1000)
 
-        // 2. Hochperformanter Datenbank-Aufruf über unsere gemeinsame Team-Query
-        val relevantEntities = todoRepository.findRelevantTodosForUser(userId, cutoffDate)
+        // 2. User-Kontexte laden
+        val contexts = userContextResolver.resolveContexts(userId)
 
-        // 3. Konvertieren in DTOs und ab ans Frontend
-        return relevantEntities.map { mapToDto(it) }
+        // 3. Aus allen Kontexten Specifications bauen und per OR verknüpfen
+        val combinedScopeSpec = contexts.mapNotNull { context ->
+            when (context.scope.name) {
+                ScopeType.COMPANY ->
+                    TodoSpecifications.isCompanyScope()
+
+                ScopeType.DEPARTMENT ->
+                    context.scopeInstanceId?.let { TodoSpecifications.isDepartmentScope(it) }
+
+                ScopeType.RESOURCE ->
+                    TodoSpecifications.isPrivateResourceScope(userId)
+
+                else -> null
+            }
+        }.reduceOrNull { accSpec, currentSpec -> accSpec.or(currentSpec) }
+
+        // Falls gar keine Scopes vorliegen, leere Liste zurückgeben
+        if (combinedScopeSpec == null) return emptyList()
+
+        // 🎯 4. HIER wird cutoffDate JETZT SAUBER ÜBERGEBEN:
+        val finalSpec = combinedScopeSpec.and(
+            TodoSpecifications.isNotArchivedAndWithinCutoff(cutoffDate)
+        )
+
+        // 5. Ein einziger DB-Aufruf via Executor
+        return todoRepository.findAll(finalSpec).map { mapToDto(it) }
     }
 
     // 2. GET BY ID (Frontend-Sicht): Nutzt deine neue, effiziente DB-Methode
-    fun getTodoById(id: String): TodoDto {
-        // 🎯 Hier nutzen wir ebenfalls deine neue Methode
-        val todo = todoRepository.findByIdAndIsArchivedFalse(id)
-            ?: throw TodoNotFoundException("Todo nicht gefunden oder archiviert")
+    fun getTodoById(userId: String, id: String): TodoDto {
+        val todo = checkPermission(userId, id, ActionType.READ, "du kannst das todo nicht lesen")
         return mapToDto(todo)
     }
 
-    fun createTodo(dto: CreateTodoDto): TodoDto {
-        validateUserExists(dto.userId, userRepository)
+    fun checkPermission(userId: String, todoId: String, action: ActionType, message: String): TodoEntity {
+        val todo = todoRepository.findByIdAndIsArchivedFalse(todoId)
+            ?: throw TodoNotFoundException("Todo nicht gefunden oder archiviert")
 
-        // 🚀 Vererbung & Extension im Einsatz: Setzt autom. usedEffort & Zeitstempel, falls nötig!
+        val userContexts = userContextResolver.resolveContexts(userId)
+
+        val canAct = permissionService.hasPermission(
+            userContexts,
+            action = action,
+            resource = buildSecurityResource(todo)
+        )
+
+        if (!canAct) {
+            throw ActionForbiddenException(message)
+        }
+        return todo
+    }
+
+    fun createTodo(userId: String, dto: CreateTodoDto): TodoDto {
+        dto.userId = userId
         val entity = mapToNewEntity(dto)
+        val contexts = userContextResolver.resolveContexts(userId)
+
+        val canCreate = permissionService.hasPermission(
+            contexts,
+            action = ActionType.CREATE,
+            resource = buildSecurityResource(entity)
+        )
+
+        if (!canCreate) {
+            throw ActionForbiddenException("Du kannst dieses Todo nicht erzeugen")
+        }
+
         val savedEntity = todoRepository.save(entity)
 
         if (dto.done && dto.milestoneId != null) {
             milestoneService.recalculateMilestoneProgress(
-                milestoneId = dto.milestoneId,
+                milestoneId = dto.milestoneId!!,
                 effort = dto.effort,
                 usedEffort = dto.usedEffort,
                 isDone = true
@@ -162,27 +221,23 @@ class TodoService (
         return mapToDto(savedEntity)
     }
 
-    fun updateTodo(dto: TodoDto): TodoUpdateResponse {
-        validateUserExists(dto.userId, userRepository)
+    fun updateTodo(userId: String, dto: TodoDto): TodoUpdateResponse {
+        val  oldTodo = checkPermission(userId, dto.id, ActionType.UPDATE, "Du kannst das Todo nicht ändern")
 
-        // 1. Aktuellen Zustand inklusive ALLER versteckten KI-Felder aus der DB holen
-        val oldTodo = todoRepository.findByIdAndIsArchivedFalse(dto.id)
-            ?: throw TodoNotFoundException("To-Do mit ID ${dto.id} nicht gefunden")
-
-        // Werte für den MilestoneService sichern, bevor wir das Objekt modifizieren
+        // Altzustände für Meilenstein-Berechnung merken
         val oldMilestoneId = oldTodo.milestoneId
         val oldEffort = oldTodo.effort
         val oldDone = oldTodo.done
 
-        // 🧠 KI-LOGIK RETTEN: Zähler hochschrauben, wenn sich der Aufwand im Frontend geändert hat
+        // KI-Zähler hochschrauben, falls sich der Effort geändert hat
         if (oldTodo.effort != dto.effort) {
             oldTodo.effortChangesCount += 1
         }
 
-        // 🔄 SICHERES MERGE: Wir übertragen NUR die Frontend-Felder auf unsere geladene DB-Entity
+        // Frontend-Felder auf die Entity übertragen
         val updatedEntity = mergeDtoIntoEntity(dto, oldTodo)
 
-        // 2. MILESTONE-BERECHNUNG: Fall A (War es vorher fertig? Aufwand abziehen)
+        // Meilenstein-Fortschritt korrigieren, falls das Todo VORHER erledigt war
         if (oldDone && !oldMilestoneId.isNullOrBlank()) {
             milestoneService.recalculateMilestoneProgress(
                 milestoneId = oldMilestoneId,
@@ -192,15 +247,10 @@ class TodoService (
             )
         }
 
-        val user = userRepository.findById(dto.userId).orElseThrow()
-        if (!oldDone && updatedEntity.done && !updatedEntity.milestoneId.isNullOrBlank()) {
-            streakService.updateStreakOnTodoCompleted(user, updatedEntity)
-        }
-
-        // Jetzt speichern die modifizierte Entity ab (cooldownTurns und focusType sind absolut sicher!)
+        // Modifizierte Entity in der DB speichern
         val savedEntity = todoRepository.save(updatedEntity)
 
-        // Fall B: Ist es JETZT erledigt? Dann neuen Aufwand auf den Meilenstein rechnen.
+        // Meilenstein-Fortschritt aufrechnen, falls das Todo JETZT erledigt ist
         if (savedEntity.done && !savedEntity.milestoneId.isNullOrBlank()) {
             milestoneService.recalculateMilestoneProgress(
                 milestoneId = savedEntity.milestoneId,
@@ -210,21 +260,30 @@ class TodoService (
             )
         }
 
-        // 3. Gamification-Logik triggern bei Statuswechsel
+        // 🎯 9. Fair ermitteln, wer die Gamification & Streaks bekommt (Entwickler -> Assignee -> Haken-Setzer)
+        val xpReceiverUserId = gamificationService.determineXpReceiverUserId(savedEntity, userId)
+
+        // 🎯 10. Streak für den tatsächlichen Entwickler/Bearbeiter aktualisieren
+        if (!oldDone && savedEntity.done && !savedEntity.milestoneId.isNullOrBlank()) {
+            val xpReceiverUser = userRepository.findById(xpReceiverUserId).orElseThrow()
+            streakService.updateStreakOnTodoCompleted(xpReceiverUser, savedEntity)
+        }
+
+        // 🎯 11. Gamification für den richtigen Empfänger triggern (Punkte vergeben oder abziehen)
         var gamificationResult: GamificationResult? = null
         if (oldDone != savedEntity.done) {
             gamificationResult = gamificationService.processTodoStatusChange(
-                savedEntity.userId,
-                savedEntity.effort,
-                usedEffort = savedEntity.usedEffort,
+                todo = savedEntity,
+                currentUserId = userId,
                 isDone = savedEntity.done
             )
         }
 
-        val freshUser = userRepository.findById(dto.userId).orElseThrow()
+        // 12. Aktuelle Streak-Info für den anfragenden Frontend-User holen
+        val freshUser = userRepository.findById(userId).orElseThrow()
         val streakInfo = streakService.getCurrentStreakInfo(freshUser)
 
-        // 4. Antwort via mapToDto sauber konvertieren
+        // 13. Antwort zurückgeben
         return TodoUpdateResponse(
             todo = mapToDto(savedEntity),
             gamificationResult = gamificationResult,
@@ -237,10 +296,14 @@ class TodoService (
      * Filtert in der Query Projekt-Aufgaben (mit milestoneId) automatisch heraus.
      */
     fun deleteCompletedPrivateTodos(userId: String) {
-        // 🛡️ SICHERHEITS-CHECK: Frontend kickt den User, wenn er aus der DB gelöscht wurde
-        validateUserExists(userId, userRepository)
+        val userContexts = userContextResolver.resolveContexts(userId)
+        val hasPrivateOwnerScope = userContexts.any { context ->
+            context.scope.name == ScopeType.RESOURCE && context.role.name == RoleType.OWNER
+        }
 
-        // Nutzt die sichere Update-Query aus dem Repository
+        if (!hasPrivateOwnerScope) {
+            throw ActionForbiddenException("Du hast keine Berechtigung, deine privaten Todos zu löschen")
+        }
         todoRepository.archiveCompletedPrivateTodos(userId)
     }
 
@@ -249,10 +312,15 @@ class TodoService (
      * Filtert in der Query Projekt-Aufgaben (mit milestoneId) automatisch heraus.
      */
     fun deleteAllPrivateTodos(userId: String) {
-        // 🛡️ SICHERHEITS-CHECK: Frontend kickt den User, wenn er aus der DB gelöscht wurde
-        validateUserExists(userId, userRepository)
+        val userContexts = userContextResolver.resolveContexts(userId)
+        val hasPrivateOwnerScope = userContexts.any { context ->
+            context.scope.name == ScopeType.RESOURCE && context.role.name == RoleType.OWNER
+        }
 
-        // Nutzt die sichere Update-Query aus dem Repository
+        if (!hasPrivateOwnerScope) {
+            throw ActionForbiddenException("Du hast keine Berechtigung, deine privaten Todos zu löschen")
+        }
+
         todoRepository.archiveAllPrivateTodos(userId)
     }
 
@@ -261,166 +329,170 @@ class TodoService (
      * Wenn das Todo nicht existiert (updatedRows == 0), fliegt eine Exception,
      * damit das Frontend über den Datenkonflikt informiert wird!
      */
-    fun deleteTodoById(id: String) {
+    fun deleteTodoById(userId: String, id: String) {
+
+        val todo = checkPermission(userId, id, ActionType.DELETE, "Du hast keine Berechtigung, dieses Todo zu löschen")
+        // 🎯 Falls das Todo erledigt war und zu einem Meilenstein gehörte: Meilenstein-Fortschritt anpassen
+        if (todo.done && !todo.milestoneId.isNullOrBlank()) {
+            milestoneService.recalculateMilestoneProgress(
+                milestoneId = todo.milestoneId!!,
+                effort = todo.effort,
+                usedEffort = todo.usedEffort,
+                isDone = false // Fortschritt wieder abziehen
+            )
+        }
+
         val updatedRows = todoRepository.archiveById(id)
         if (updatedRows == 0) {
-            throw TodoNotFoundException("todo not found")
+            throw TodoNotFoundException("Das To-Do konnte nicht gelöscht werden")
         }
     }
 
     // 3. STATUS UPDATE (Sicherheit erhöhen)
-    fun updateStatus(id: String, done: Boolean, userId: String): TodoDto {
-        validateUserExists(userId, userRepository)
-
-        // 🎯 Nur noch aktive Todos können ihren Status ändern
-        val todo = todoRepository.findByIdAndIsArchivedFalse(id)
-            ?: throw TodoNotFoundException("Todo nicht gefunden oder archiviert")
-
-        todo.done = done
-        val saved = todoRepository.save(todo)
-        return mapToDto(saved)
-    }
-
-    @Transactional
-    fun toggleStatusWithGamification(id: String, isDone: Boolean, userId: String): GamificationResult {
-        // 1. Status in der DB updaten (wirft Exception, falls nicht vorhanden)
-        val updatedTodoDto = this.updateStatus(id, isDone, userId)
-
-        // 2. XP und Level berechnen lassen und zurückgeben
-        return gamificationService.processTodoStatusChange(
-            userId = userId,
-            effort = updatedTodoDto.effort,
-            usedEffort = updatedTodoDto.usedEffort,
-            isDone = isDone
-        )
-    }
-
-    private fun updateEffortChange(oldTodo: TodoEntity, newTodo: TodoEntity): TodoEntity {
-        // 🧠 KI-LOGIK: Wenn sich der Aufwand geändert hat, Zähler basierend auf der DB hochzählen
-        if (oldTodo.effort != newTodo.effort) {
-            newTodo.effortChangesCount = oldTodo.effortChangesCount + 1
-        } else {
-            // Falls er gleich blieb, Zählerstand aus der DB übernehmen (damit dort keine 0 überschrieben wird)
-            newTodo.effortChangesCount = oldTodo.effortChangesCount
-        }
-
-        // DIE RETTUNG DER VERSTECKTEN KI-FELDER:
-        // Wir impfen die neue Entity mit den unberührten Werten aus der DB
-        newTodo.focusType = oldTodo.focusType
-        newTodo.cooldownTurns = oldTodo.cooldownTurns
-        newTodo.isArchived = oldTodo.isArchived
-        newTodo.createdAt = oldTodo.createdAt // Auch das originale Erstellungsdatum bleibt so sicher!
-        newTodo.snoozedUntil = oldTodo.snoozedUntil
-
-        return newTodo
-    }
+//    fun updateStatus(id: String, done: Boolean, userId: String): TodoDto {
+//        validateUserExists(userId, userRepository)
+//
+//        // 🎯 Nur noch aktive Todos können ihren Status ändern
+//        val todo = todoRepository.findByIdAndIsArchivedFalse(id)
+//            ?: throw TodoNotFoundException("Todo nicht gefunden oder archiviert")
+//
+//        todo.done = done
+//        val saved = todoRepository.save(todo)
+//        return mapToDto(saved)
+//    }
+//
+//    @Transactional
+//    fun toggleStatusWithGamification(id: String, isDone: Boolean, userId: String): GamificationResult {
+//        // 1. Status in der DB updaten (wirft Exception, falls nicht vorhanden)
+//        val updatedTodoDto = this.updateStatus(id, isDone, userId)
+//
+//        // 2. XP und Level berechnen lassen und zurückgeben
+//        return gamificationService.processTodoStatusChange(
+//            userId = userId,
+//            effort = updatedTodoDto.effort,
+//            usedEffort = updatedTodoDto.usedEffort,
+//            isDone = isDone
+//        )
+//    }
+//
+//    private fun updateEffortChange(oldTodo: TodoEntity, newTodo: TodoEntity): TodoEntity {
+//        // 🧠 KI-LOGIK: Wenn sich der Aufwand geändert hat, Zähler basierend auf der DB hochzählen
+//        if (oldTodo.effort != newTodo.effort) {
+//            newTodo.effortChangesCount = oldTodo.effortChangesCount + 1
+//        } else {
+//            // Falls er gleich blieb, Zählerstand aus der DB übernehmen (damit dort keine 0 überschrieben wird)
+//            newTodo.effortChangesCount = oldTodo.effortChangesCount
+//        }
+//
+//        // DIE RETTUNG DER VERSTECKTEN KI-FELDER:
+//        // Wir impfen die neue Entity mit den unberührten Werten aus der DB
+//        newTodo.focusType = oldTodo.focusType
+//        newTodo.cooldownTurns = oldTodo.cooldownTurns
+//        newTodo.isArchived = oldTodo.isArchived
+//        newTodo.createdAt = oldTodo.createdAt // Auch das originale Erstellungsdatum bleibt so sicher!
+//        newTodo.snoozedUntil = oldTodo.snoozedUntil
+//
+//        return newTodo
+//    }
 
     @Transactional
     fun syncBulkTodos(userId: String, bulkDtos: List<TodoBulkDto>): SyncResultDto {
         validateUserExists(userId, userRepository)
 
-        val oldTodos = todoRepository.findByUserId(userId).associateBy { it.id }
-        val user = userRepository.findById(userId).orElseThrow()
-
         for (dto in bulkDtos) {
-            val oldTodo = oldTodos[dto.id]
-
             when (dto.syncAction) {
                 "CREATED" -> {
-                if (oldTodo == null) {
-                    val newDto = CreateTodoDto(
-                    task = dto.task, description = dto.description, effort = dto.effort,
-                    userId = userId, done = dto.done, usedEffort = dto.usedEffort, milestoneId = dto.milestoneId
+                    val createDto = CreateTodoDto(
+                        task = dto.task,
+                        description = dto.description,
+                        effort = dto.effort,
+                        userId = userId,
+                        done = dto.done,
+                        usedEffort = dto.usedEffort,
+                        milestoneId = dto.milestoneId
                     )
-                    val entity = mapToNewEntity(newDto).apply { this.id = dto.id; this.done = dto.done }
-                    todoRepository.save(entity)
+                    // 🎯 Nutzt komplett deine Create-Logik inkl. Rechte & Meilensteine
+                    createTodo(userId, createDto)
+                }
 
-                    if (dto.done) {
-                        gamificationService.processTodoStatusChange(userId, dto.effort, usedEffort = dto.usedEffort, isDone = true)
-                        if (!entity.milestoneId.isNullOrBlank()) {
-                            streakService.updateStreakOnTodoCompleted(user, entity)
-                        }
-                    }
-                }
-            }
                 "UPDATED" -> {
-                    if (oldTodo != null) {
-                        if (oldTodo.done != dto.done) {
-                            toggleStatusWithGamification(dto.id, dto.done, userId)
-                            if (dto.done && !oldTodo.milestoneId.isNullOrBlank()) {
-                                streakService.updateStreakOnTodoCompleted(user, oldTodo)
-                            }
-                        }
-                        val entityToUpdate = mergeDtoIntoEntity(dto, oldTodo)
-                        todoRepository.save(updateEffortChange(oldTodo, entityToUpdate))
-                    }
+                    val todoDto = TodoDto(
+                        id = dto.id,
+                        task = dto.task,
+                        description = dto.description,
+                        done = dto.done,
+                        effort = dto.effort,
+                        usedEffort = dto.usedEffort,
+                        dueDate = dto.dueDate,
+                        completedAt = dto.completedAt,
+                        createdAt = dto.createdAt,
+                        userId = userId,
+                        category = dto.category,
+                        milestoneId = dto.milestoneId,
+                        assignedUserId = dto.assignedUserId,
+                        isStarted = dto.isStarted,
+                        teamStatus = dto.teamStatus,
+                        lastDeveloperId = dto.lastDeveloperId
+                    )
+                    // 🎯 Nutzt deine perfekte Update-Logik (Rechte, Gamification, KI-Zähler, Streaks, Meilensteine)
+                    updateTodo(userId, todoDto)
                 }
+
                 "DELETED" -> {
-                    if (oldTodo != null) {
-                        if (!oldTodo.done && dto.done) {
-                            gamificationService.processTodoStatusChange(userId, oldTodo.effort, usedEffort = dto.usedEffort, isDone = true)
-                            if (!oldTodo.milestoneId.isNullOrBlank()) {
-                                streakService.updateStreakOnTodoCompleted(user, oldTodo)
-                            }
-                        }
-                        todoRepository.archiveById(dto.id) // 📦 Sicher archivieren!
-                    }
+                    // 🎯 Prüft Rechte & zieht bei Bedarf Meilenstein-Fortschritt ab
+                    deleteTodoById(userId, dto.id)
                 }
+
                 "DIRTY_AND_DELETED" -> {
-                    if (oldTodo != null) {
-                        if (oldTodo.done != dto.done) {
-                            gamificationService.processTodoStatusChange(userId, dto.effort, usedEffort = dto.usedEffort, isDone = dto.done)
-                            if (dto.done && !oldTodo.milestoneId.isNullOrBlank()) {
-                                streakService.updateStreakOnTodoCompleted(user, oldTodo)
-                            }
-                        }
-                        val entityToUpdate = mergeDtoIntoEntity(dto, oldTodo)
-                        todoRepository.save(updateEffortChange(oldTodo, entityToUpdate))
-                        todoRepository.archiveById(dto.id)
-                    }
+                    // Erst Updaten (damit Gamification/Status abgehandelt wird), dann Löschen
+                    val todoDto = TodoDto(
+                        id = dto.id, task = dto.task, description = dto.description,
+                        done = dto.done, effort = dto.effort, usedEffort = dto.usedEffort,
+                        dueDate = dto.dueDate, completedAt = dto.completedAt, createdAt = dto.createdAt,
+                        userId = userId, category = dto.category, milestoneId = dto.milestoneId,
+                        assignedUserId = dto.assignedUserId, isStarted = dto.isStarted,
+                        teamStatus = dto.teamStatus, lastDeveloperId = dto.lastDeveloperId
+                    )
+                    updateTodo(userId, todoDto)
+                    deleteTodoById(userId, dto.id)
                 }
+
                 "CREATED_AND_DELETED" -> {
-                    if (oldTodo == null) {
-                        val newDto = CreateTodoDto(
+                    // War offline neu, wurde aber offline auch gleich wieder gelöscht -> Gar nichts tun oder 1x blind ins Archiv
+                    val newDto = CreateTodoDto(
                         task = dto.task, description = dto.description, effort = dto.effort,
                         userId = userId, done = dto.done, usedEffort = dto.usedEffort, milestoneId = dto.milestoneId
-                        )
-                        val entity = mapToNewEntity(newDto).apply {
-                            this.id = dto.id
-                            this.done = dto.done
-                            this.isArchived = true // 📦 Wandert sofort blind ins Archiv!
-                        }
-                        todoRepository.save(entity)
-
-                        if (dto.done) {
-                            gamificationService.processTodoStatusChange(userId, dto.effort, usedEffort = dto.usedEffort, isDone = true)
-                            if (!entity.milestoneId.isNullOrBlank()) {
-                                streakService.updateStreakOnTodoCompleted(user, entity)
-                            }
-                        }
+                    )
+                    val entity = mapToNewEntity(newDto).apply {
+                        this.id = dto.id
+                        this.done = dto.done
+                        this.isArchived = true
                     }
+                    todoRepository.save(entity)
                 }
+
                 "BULK_DELETE_COMPLETED" -> {
-                    this.deleteCompletedPrivateTodos(userId)
+                    deleteCompletedPrivateTodos(userId)
                 }
+
                 "BULK_DELETE_ALL" -> {
-                    this.deleteAllPrivateTodos(userId)
+                    deleteAllPrivateTodos(userId)
                 }
             }
         }
 
         todoRepository.flush()
+
+        // Am Ende den frischen Gesamtstand fürs Frontend zusammenbauen
         val aktuelleListe = getRelevantTodos(userId)
         val finalerGamificationStand = gamificationService.getGamificationState(userId)
-
-        // 👈 4. STREAK-LOGIK TEIL C: Den finalen Stand nach dem Massen-Sync berechnen
         val freshUser = userRepository.findById(userId).orElseThrow()
         val streakInfo = streakService.getCurrentStreakInfo(freshUser)
 
         return SyncResultDto(
             liste = aktuelleListe,
-        gamificationResult = finalerGamificationStand,
-        streakInfo = streakInfo // 🔥 Mitgeben!
+            gamificationResult = finalerGamificationStand,
+            streakInfo = streakInfo
         )
     }
 
@@ -432,12 +504,28 @@ class TodoService (
         return gamificationService.getGamificationState(userId)
     }
 
-    fun getTodosByMilestone(userId: String?, milestoneId: String): List<TodoDto> {
-        // Holt gezielt nur die Aufgaben für diesen Meilenstein aus der DB
-        val entities = if (userId != null) todoRepository.findByUserIdAndMilestoneId(userId, milestoneId)
-                        else todoRepository.findByMilestoneId(milestoneId)
+    fun getTodosByMilestone(userId: String, milestoneId: String): List<TodoDto> {
+        validateUserExists(userId, userRepository)
 
-        return entities.map { mapToDto(it) }
+        // 1. Alle Todos für diesen Meilenstein aus der DB holen (nicht archiviert)
+        val todos = todoRepository.findByMilestoneIdAndIsArchivedFalse(milestoneId)
+
+        if (todos.isEmpty()) {
+            return emptyList()
+        }
+
+        // 2. Sicherheits-Check: Hat der User READ-Rechte auf diese Todos/das Projekt?
+        val userContexts = userContextResolver.resolveContexts(userId)
+
+        val authorizedTodos = todos.filter { entity ->
+            permissionService.hasPermission(
+                userContexts = userContexts,
+                action = ActionType.READ,
+                resource = buildSecurityResource(entity)
+            )
+        }
+
+        return authorizedTodos.map { mapToDto(it) }
     }
 
     fun getCategoryTrainingPairs(): List<Pair<String, String>> {
@@ -455,6 +543,24 @@ class TodoService (
             val focus = try { FocusType.valueOf(todo.focusType) } catch(e: Exception) { FocusType.LOW_FOCUS }
             text to focus
         }
+    }
+
+    private fun buildSecurityResource(todo: TodoEntity): TodoSecurityResource {
+        var projectId: String? = null
+        var departmentId: String? = null
+
+        if (!todo.milestoneId.isNullOrBlank()) {
+            val milestone = milestoneRepository.findById(todo.milestoneId!!).orElse(null)
+            projectId = milestone?.project?.id
+            departmentId = milestone?.project?.departmentId
+        }
+
+        return TodoSecurityResource(
+            id = todo.id.ifBlank { null },
+            ownerUserId = todo.userId,
+            projectId = projectId,
+            departmentId = departmentId
+        )
     }
 
     fun getQuickTodoTrainingPairs(): List<Pair<String, String>> {

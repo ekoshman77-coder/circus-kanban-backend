@@ -1,5 +1,6 @@
 package com.backend.todo_api.data.repository
 
+import com.backend.todo_api.data.entity.ResourceEntity
 import com.backend.todo_api.data.entity.RolePermissionEntity
 import com.backend.todo_api.model.ActionType
 import com.backend.todo_api.model.ResourceType
@@ -18,4 +19,5 @@ interface RolePermissionRepository : JpaRepository<RolePermissionEntity, String>
     ): List<RolePermissionEntity>
 
     fun findByActionNameAndResourceName(actionName: ActionType, resourceName: ResourceType): List<RolePermissionEntity>
+    fun existsByResource(resource: ResourceEntity): Boolean
 }

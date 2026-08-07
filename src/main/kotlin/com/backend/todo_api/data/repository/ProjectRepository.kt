@@ -31,4 +31,14 @@ interface ProjectRepository : JpaRepository<ProjectEntity, String> {
         AND p.status != 'Zip'
     """)
     fun getDashboardStatistics(@Param("userId") userId: String): ProjectStatsProjection
+
+    @Query("""
+        SELECT DISTINCT p FROM ProjectEntity p 
+        JOIN p.teamMemberships mem 
+        WHERE mem.user.id = :userId AND p.status != :status
+    """)
+    fun findProjectsByMemberUserIdAndStatusNot(
+        @Param("userId") userId: String,
+        @Param("status") status: String = "Zip"
+    ): List<ProjectEntity>
 }
