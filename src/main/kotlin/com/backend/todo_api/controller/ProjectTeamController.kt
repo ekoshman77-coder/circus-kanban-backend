@@ -32,10 +32,10 @@ class ProjectTeamController(
     ])
     fun getProjectMembers(
         @RequestParam(required = false) projectId: String?,
-        principal: Principal
+        principal: Principal?
          // Zwingend erforderlich für die Abteilungstrennung!
     ): ResponseEntity<List<ProjectMemberDto>> {
-        val currentUserId = principal.name
+        val currentUserId = getUserIdFromPrincipal(principal)
         val members = if (projectId.isNullOrBlank()) {
             // 🌍 Fall A: Abteilungs-Pool (Nur Kollegen aus der eigenen Abteilung)
             projectTeamService.getAllGlobalUsersWithProjects(currentUserId)
@@ -62,9 +62,9 @@ class ProjectTeamController(
         @RequestParam projectId: String,
         @RequestParam role: String,
         @jakarta.validation.Valid @RequestBody request: AssignUserRequestDTO,
-        principal: Principal
+        principal: Principal?
     ): ResponseEntity<ProjectMemberDto> {
-        val currentUserId = principal.name
+        val currentUserId = getUserIdFromPrincipal(principal)
         val assigned = projectTeamService.assignUserToProject(currentUserId, projectId, request.userId, role)
         return ResponseEntity.ok(assigned)
     }
@@ -83,9 +83,9 @@ class ProjectTeamController(
     fun removeUserFromProject(
         @RequestParam projectId: String,
         @PathVariable memberId: String,
-        principal: Principal
+        principal: Principal?
     ): ResponseEntity<Void> {
-        val currentUserId = principal.name
+        val currentUserId = getUserIdFromPrincipal(principal)
         projectTeamService.removeUserFromProject(projectId, memberId, currentUserId)
         return ResponseEntity.noContent().build()
     }
@@ -105,9 +105,9 @@ class ProjectTeamController(
         @RequestParam balance: Float,
         @RequestParam role: String,
         @RequestParam emoji: String,
-        principal: Principal
+        principal: Principal?
     ): ResponseEntity<UserResponseDto> {
-        val currentUserId = principal.name
+        val currentUserId = getUserIdFromPrincipal(principal)
         val updatedUser = projectTeamService.updateCoffeeAccount( currentUserId, id, balance, role, emoji)
         return ResponseEntity.ok(updatedUser)
     }
@@ -120,8 +120,9 @@ class ProjectTeamController(
     )
     @ApiResponses(value = [
         ApiResponse(responseCode = "200", description = "Admin-Benutzerliste erfolgreich geladen")
-    ])    fun getAllUsersForAdmin( principal: Principal ): ResponseEntity<List<ProjectMemberDto>> {
-        val currentUserId = principal.name
+    ])
+    fun getAllUsersForAdmin( principal: Principal? ): ResponseEntity<List<ProjectMemberDto>> {
+        val currentUserId = getUserIdFromPrincipal(principal)
         val allUsers = projectTeamService.getAllUsersForAdminBoard(currentUserId)
         return ResponseEntity.ok(allUsers)
     }

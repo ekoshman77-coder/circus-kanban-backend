@@ -3,6 +3,7 @@ package com.backend.todo_api.services
 import com.backend.todo_api.constants.AppConstants
 import com.backend.todo_api.data.entity.CoffeeAccountEntity
 import com.backend.todo_api.data.entity.PlannerSettingsEntity
+import com.backend.todo_api.data.entity.RoleEntity
 import com.backend.todo_api.data.entity.UserEntity
 import com.backend.todo_api.data.repository.CoffeeAccountRepository
 import com.backend.todo_api.data.repository.DepartmentRepository
@@ -12,10 +13,11 @@ import com.backend.todo_api.data.repository.ProjectRepository
 import com.backend.todo_api.data.repository.RoleRepository
 import com.backend.todo_api.data.repository.TodoRepository
 import com.backend.todo_api.data.repository.UserRepository
+import com.backend.todo_api.dto.CoffeeAccountDto
 import com.backend.todo_api.dto.CreateUserDto
 import com.backend.todo_api.dto.UserApproveDto
 import com.backend.todo_api.dto.UserDto
-import com.backend.todo_api.dto.copyToUserDto
+import com.backend.todo_api.dto.UserResponseDto
 import com.backend.todo_api.exceptions.ActionForbiddenException
 import com.backend.todo_api.exceptions.UserAlreadyExistsException
 import com.backend.todo_api.exceptions.UserNotApprovedException
@@ -41,7 +43,8 @@ class UserService(
     private val departmentRepository: DepartmentRepository,
     private val roleRepository: RoleRepository,
     private val permissionService: PermissionService,
-    private val userContextResolver: UserContextResolver
+    private val userContextResolver: UserContextResolver,
+    private val departmentService: DepartmentService
 ) {
 
     // 🔑 Login
@@ -80,22 +83,28 @@ class UserService(
         var assignedDepartmentId: String? = null
         var approvedStatus = false
 
-        if (isFirstUser) {
+        // 🚀 NEU: Dynamische Rolle je nachdem, ob es der erste User (Admin) ist oder nicht!
+        val assignedRole: RoleEntity = if (isFirstUser) {
             val adminDept = departmentRepository.findByNameIgnoreCase(AppConstants.ADMIN_DEPARTMENT_NAME)
             assignedDepartmentId = adminDept?.id
             approvedStatus = true
             println("👑 Ur-Admin Registrierung erkannt! Gewählte Abteilung: ${AppConstants.ADMIN_DEPARTMENT_NAME}.")
+
+            // 👑 Der Ur-Admin bekommt die Super-Admin Rolle!
+            RoleType.ADMIN_HEAD.toEntity(roleRepository)
+        } else {
+            // Normale User starten als MEMBER
+            RoleType.MEMBER.toEntity(roleRepository)
         }
 
         val hashedPassword = passwordEncoder.encode(dto.password)
-        val defaultDepartmentRole = RoleType.MEMBER.toEntity(roleRepository)
         val savedEntity = userRepository.save(UserEntity(
             username = usernameTrimmed,
             firstName = dto.firstName,
             lastName = dto.lastName,
             password = if (hashedPassword == null) "" else hashedPassword,
             departmentId = assignedDepartmentId,
-            departmentRole = defaultDepartmentRole,
+            departmentRole = assignedRole,
             isApproved = approvedStatus
         ))
 
@@ -111,7 +120,7 @@ class UserService(
             userId = savedEntity.id,
             balance = 0f,
             emoji = if (isFirstUser) "👑" else "👩‍💻",
-            role = "Teammitglied"
+            role = if (isFirstUser) "Administrator" else "Teammitglied"
         )
         coffeeAccountRepository.save(defaultCoffeeAccount)
 
@@ -207,7 +216,8 @@ class UserService(
         userRepository.save(userEntity)
     }
 
-    fun getApprovedUsers(currentUserId: String): List<UserDto> {
+    // 📋 Für aktive Benutzer (getApprovedUsers) – liefert jetzt UserResponseDto inklusive Kaffeekonto & Projekten
+    fun getApprovedUsers(currentUserId: String): List<UserResponseDto> {
         val userContexts = userContextResolver.resolveContexts(currentUserId)
         val userResource = UserSecurityResource(targetUserId = currentUserId)
 
@@ -221,11 +231,16 @@ class UserService(
             throw ActionForbiddenException("Keine Berechtigung zum Abrufen der aktiven Benutzerliste.")
         }
 
-        return userRepository.findByIsApprovedAndIsArchivedFalse(true).map { copyToUserDto(it, UserDto()) }
+        val approvedUsers = userRepository.findByIsApprovedAndIsArchivedFalse(true)
+
+        return approvedUsers.map { userEntity ->
+            val coffeeAccount = coffeeAccountRepository.findById(userEntity.id).orElse(null)
+            entityToUserResponseDto(userEntity, coffeeAccount)
+        }
     }
 
-    // 📋 Für Admin Board: Unberechtigte/Wartende Benutzer abrufen (Warteraum)
-    fun getUnapprovedUsers(currentUserId: String): List<UserDto> {
+    // 📋 Für Warteraum (getUnapprovedUsers) – liefert jetzt UserResponseDto inklusive Kaffeekonto
+    fun getUnapprovedUsers(currentUserId: String): List<UserResponseDto> {
         val userContexts = userContextResolver.resolveContexts(currentUserId)
         val userResource = UserSecurityResource(targetUserId = currentUserId)
 
@@ -239,20 +254,23 @@ class UserService(
             throw ActionForbiddenException("Keine Berechtigung zum Abrufen des Warteraums.")
         }
 
-        return userRepository.findByIsApprovedAndIsArchivedFalse(false).map { copyToUserDto(it, UserDto()) }
+        val unapprovedUsers = userRepository.findByIsApprovedAndIsArchivedFalse(false)
+
+        return unapprovedUsers.map { userEntity ->
+            val coffeeAccount = coffeeAccountRepository.findById(userEntity.id).orElse(null)
+            entityToUserResponseDto(userEntity, coffeeAccount)
+        }
     }
 
-    // 👑 Admin schaltet Benutzer frei und weist Abteilung zu
+    // 👑 Admin schaltet Benutzer frei – liefert UserResponseDto statt flachem UserDto
     @Transactional
-    fun approveUser(currentUserId: String, targetUserId: String, dto: UserApproveDto): UserDto {
+    fun approveUser(currentUserId: String, targetUserId: String, dto: UserApproveDto): UserResponseDto {
         val userContexts = userContextResolver.resolveContexts(currentUserId)
 
         val targetUser = userRepository.findById(targetUserId).orElseThrow {
             UserNotFoundException("Benutzer mit der ID $targetUserId wurde nicht gefunden.")
         }
 
-        // Da der targetUser noch keine Abteilung hat, übergeben wir null für die departmentId.
-        // Ein ADMIN schaltet dank COMPANY-Scope und UPDATE-Action auf USER sauber durch!
         val userResource = UserSecurityResource(targetUserId = targetUserId, departmentId = null)
 
         val hasAccess = permissionService.hasPermission(
@@ -267,12 +285,16 @@ class UserService(
 
         targetUser.departmentId = dto.departmentId
         targetUser.isApproved = true
+        targetUser.departmentRole = dto.departmentRole.toEntity(roleRepository)
 
         val savedUser = userRepository.save(targetUser)
-        return copyToUserDto(savedUser, UserDto())
+        val coffeeAccount = coffeeAccountRepository.findById(savedUser.id).orElse(null)
+
+        return entityToUserResponseDto(savedUser, coffeeAccount)
     }
 
-    fun getUserById(currentUserId: String, targetUserId: String): UserDto {
+    // 🔍 Einzelnen Benutzer abrufen – liefert UserResponseDto statt flachem UserDto
+    fun getUserById(currentUserId: String, targetUserId: String): UserResponseDto {
         val userEntity = userRepository.findByIdAndIsArchivedFalse(targetUserId)
             ?: throw UserNotFoundException("Benutzer mit der ID $targetUserId wurde nicht gefunden.")
 
@@ -291,7 +313,8 @@ class UserService(
             throw ActionForbiddenException("Du hast keine Berechtigung, die Profilinformationen dieses Benutzers einzusehen.")
         }
 
-        return copyToUserDto(userEntity, UserDto())
+        val coffeeAccount = coffeeAccountRepository.findById(userEntity.id).orElse(null)
+        return entityToUserResponseDto(userEntity, coffeeAccount)
     }
 
     // 🛡️ Hilfsmethode für den Security-Stempel
@@ -303,5 +326,38 @@ class UserService(
 
         // Wenn die IDs übereinstimmen, ist der User ein Admin!
         return adminDept?.id == departmentId
+    }
+
+    fun UserEntity.toDto(): UserDto {
+        return copyToUserDto(this, UserDto())
+    }
+
+    fun copyToUserDto(userEntity: UserEntity, userDto: UserDto): UserDto {
+        userDto.id = userEntity.id
+        userDto.username = userEntity.username
+        userDto.firstName = userEntity.firstName
+        userDto.lastName = userEntity.lastName
+        userDto.department = if (userEntity.departmentId != null)
+                               departmentService.getDepartmentDtoById(userEntity.departmentId)
+                             else null
+        userDto.departmentRole = userEntity.departmentRole?.name
+        userDto.isApproved = userEntity.isApproved
+        return userDto
+    }
+
+    fun entityToUserResponseDto(userEntity: UserEntity, coffeeAccountEntity: CoffeeAccountEntity?): UserResponseDto {
+        val dto = UserResponseDto()
+        val dtoWithUser = copyToUserDto(userEntity, dto) as UserResponseDto
+        dtoWithUser.projectIds = userEntity.projectMemberships.map { it.project.id }
+        return copyCoffeeAccountToResponseDto(coffeeAccountEntity, dtoWithUser)
+    }
+
+    fun copyCoffeeAccountToResponseDto(coffeeAccountEntity: CoffeeAccountEntity?, dto: UserResponseDto): UserResponseDto {
+        dto.coffeeAccount = CoffeeAccountDto(
+            balance = coffeeAccountEntity?.balance ?: 0f,
+            emoji = coffeeAccountEntity?.emoji ?: "👩‍💻",
+            role = coffeeAccountEntity?.role ?: "Teammitglied"
+        )
+        return dto
     }
 }

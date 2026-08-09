@@ -31,9 +31,9 @@ class TodoController(private val todoService: TodoService) {
     ])
     fun getTodos(
         @Parameter(description = "Die eindeutige ID des eingeloggten Users", required = false)
-        principal: Principal
+        principal: Principal?
     ): ResponseEntity<List<TodoDto>> {
-        val userId = principal.name
+        val userId = getUserIdFromPrincipal(principal)
         return ResponseEntity.ok(todoService.getTodos(userId))
     }
 
@@ -45,10 +45,10 @@ class TodoController(private val todoService: TodoService) {
     ])
     fun createTodo(
         @RequestBody dto: CreateTodoDto,
-        principal: Principal
+        principal: Principal?
         ): ResponseEntity<TodoDto> {
-        val userId = principal.name
-        return ResponseEntity.status(HttpStatus.CREATED).body(todoService.createTodo(userId, dto))
+        val currentUserId = getUserIdFromPrincipal(principal)
+        return ResponseEntity.status(HttpStatus.CREATED).body(todoService.createTodo(currentUserId, dto))
     }
 
     @PutMapping("/{id}")
@@ -61,12 +61,12 @@ class TodoController(private val todoService: TodoService) {
     fun updateTodo(
         @PathVariable id: String,
         @RequestBody dto: TodoDto,
-        principal: Principal
+        principal: Principal?
     ): ResponseEntity<TodoUpdateResponse> { // 🌟 Typisiert auf TodoDto
         if (id.isBlank()) {
             return ResponseEntity.badRequest().build()
         }
-        val userId = principal.name
+        val userId = getUserIdFromPrincipal(principal)
         val result = todoService.updateTodo(userId, dto );
         return ResponseEntity.ok(result)
     }
@@ -74,9 +74,9 @@ class TodoController(private val todoService: TodoService) {
     @PostMapping("/completed") // 🌟 Geändert zu PostMapping
     @Operation(summary = "Erledigte private Aufgaben eines Users löschen (wird archiviert)")
     fun deleteCompleted(
-        principal: Principal
+        principal: Principal?
         ): ResponseEntity<Map<String, String>> {
-        val userId = principal.name
+        val userId = getUserIdFromPrincipal(principal)
         if (userId.isNullOrBlank()) {
             return ResponseEntity.badRequest().build()
         }
@@ -88,9 +88,9 @@ class TodoController(private val todoService: TodoService) {
     @PostMapping("/all") // 🌟 Geändert zu PostMapping
     @Operation(summary = "Alle privaten Aufgaben eines Users löschen (wird archiviert)")
     fun deleteAll(
-        principal: Principal
+        principal: Principal?
     ): ResponseEntity<Map<String, String>> {
-        val userId = principal.name
+        val userId = getUserIdFromPrincipal(principal)
         if (userId.isNullOrBlank()) {
             return ResponseEntity.badRequest().build()
         }
@@ -103,9 +103,9 @@ class TodoController(private val todoService: TodoService) {
     @Operation(summary = "Einzelnes To-Do löschen", description = "Löscht eine spezifische Aufgabe anhand ihrer ID.")
     fun deleteTodo(
         @PathVariable id: String,
-        principal: Principal
+        principal: Principal?
     ): ResponseEntity<Void> {
-        val userId = principal.name
+        val userId = getUserIdFromPrincipal(principal)
         todoService.deleteTodoById(userId, id)
         return ResponseEntity.noContent().build()
     }
@@ -114,9 +114,9 @@ class TodoController(private val todoService: TodoService) {
     @Operation(summary = "Offline-Synchronisation (Bulk-Sync)", description = "Gleicht die Offline-Liste ab und berechnet gesammelte Punkte.")
     fun syncBulk(
         @RequestBody offlineTodos: List<TodoBulkDto>,
-        principal: Principal
+        principal: Principal?
     ): ResponseEntity<SyncResultDto> { // 🌟 Typ angepasst!
-        val userId = principal.name
+        val userId = getUserIdFromPrincipal(principal)
         if (userId.isNullOrBlank()) {
             return ResponseEntity.badRequest().build()
         }
@@ -131,9 +131,9 @@ class TodoController(private val todoService: TodoService) {
     )
     fun getTodosByMilestone(
         @PathVariable milestoneId: String,
-        principal: Principal
+        principal: Principal?
     ): ResponseEntity<List<TodoDto>> {
-        val userId = principal.name
+        val userId = getUserIdFromPrincipal(principal)
         val todos = todoService.getTodosByMilestone(userId, milestoneId)
         return ResponseEntity.ok(todos)
     }
@@ -145,9 +145,9 @@ class TodoController(private val todoService: TodoService) {
     @GetMapping("/relevant")
     fun getRelevantTodos(
         @RequestParam(defaultValue = "30") daysLookback: Int,
-        principal: Principal
+        principal: Principal?
     ): ResponseEntity<List<TodoDto>> {
-        val userId = principal.name
+        val userId = getUserIdFromPrincipal(principal)
         val todos = todoService.getRelevantTodos(userId, daysLookback)
         return ResponseEntity.ok(todos)
     }

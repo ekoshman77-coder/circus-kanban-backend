@@ -34,6 +34,11 @@ class SecurityConfig {
     @Bean
     fun securityFilterChain(http: HttpSecurity): SecurityFilterChain {
         http
+            .securityContext { securityContext ->
+                securityContext.securityContextRepository(
+                    org.springframework.security.web.context.HttpSessionSecurityContextRepository()
+                )
+            }
             // 1. CORS
             .cors { cors ->
                 val source = UrlBasedCorsConfigurationSource()

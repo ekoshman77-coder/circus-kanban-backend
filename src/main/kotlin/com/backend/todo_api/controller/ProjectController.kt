@@ -16,7 +16,7 @@ class ProjectController(private val projectService: ProjectService) {
 
     @GetMapping
     fun getProjects(
-        principal: Principal
+        principal: Principal?
     ): ResponseEntity<List<ProjectDto>> {
         val userId = getUserIdFromPrincipal(principal)
         // Reicht die userId an den überarbeiteten Service weiter
@@ -28,7 +28,7 @@ class ProjectController(private val projectService: ProjectService) {
     @GetMapping("/{id}")
     fun getProjectById(
         @PathVariable id: String,
-        principal: Principal
+        principal: Principal?
     ): ResponseEntity<ProjectDto> {
         val userId = getUserIdFromPrincipal(principal)
         return ResponseEntity.ok(projectService.getProjectById(userId, id))
@@ -37,7 +37,7 @@ class ProjectController(private val projectService: ProjectService) {
     @PostMapping
     fun createProject(
         @RequestBody dto: CreateProjectDto,
-        principal: Principal
+        principal: Principal?
     ): ResponseEntity<ProjectDto> {
         val userId = getUserIdFromPrincipal(principal)
         val project = projectService.createProject(userId, dto)
@@ -49,7 +49,7 @@ class ProjectController(private val projectService: ProjectService) {
     fun updateProject(
         @PathVariable id: String,
         @RequestBody dto: ProjectDto,
-        principal: Principal
+        principal: Principal?
     ): ResponseEntity<ProjectDto> {
         val userId = getUserIdFromPrincipal(principal)
         return ResponseEntity.ok(projectService.updateProject(userId, id, dto))
@@ -58,7 +58,7 @@ class ProjectController(private val projectService: ProjectService) {
     @DeleteMapping("/{id}")
     fun deleteProject(
         @PathVariable id: String,
-        principal: Principal
+        principal: Principal?
         ): ResponseEntity<Void> {
         val userId = getUserIdFromPrincipal(principal)
         projectService.deleteProject(userId, id)

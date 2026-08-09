@@ -38,11 +38,15 @@ fun ActionType.toEntity(actionRepository: ActionRepository): ActionEntity {
 }
 
 // 3. Alle verfügbaren Hierarchie-Scopes
-enum class ScopeType(val hierarchyLevel: Int) {
-    RESOURCE(10),  // Nur das eigene Objekt (Instanz-Level)
-    PROJECT(20),   // Projekt-Level
-    DEPARTMENT(30),// Abteilungs-Level
-    COMPANY(40)    // Firmenweit / Global
+enum class ScopeType(
+    val hierarchyLevel: Int,
+    val isDepartmentSelectable: Boolean,
+    val description: String
+) {
+    RESOURCE(10, isDepartmentSelectable = false, "Nur die eigene Ressource"),
+    PROJECT(20, isDepartmentSelectable = false, "Projekt-Ebene"),
+    DEPARTMENT(30, isDepartmentSelectable = true, "Abteilungs-Ebene"),
+    COMPANY(40, isDepartmentSelectable = true, "Firmenweit / Global")
 }
 
 fun ScopeType.toEntity(scopeRepository: ScopeRepository): ScopeEntity{
@@ -51,13 +55,21 @@ fun ScopeType.toEntity(scopeRepository: ScopeRepository): ScopeEntity{
 }
 
 // 4. Alle verfügbaren Rollen
-enum class RoleType {
-    OWNER,
-    MEMBER,
-    DEVELOPER,
-    PROJECT_MANAGER,
-    DEPARTMENT_HEAD,
-    ADMIN
+enum class RoleType(
+    val isProjectRole: Boolean,
+    val isDepartmentRole: Boolean,
+    val description: String
+) {
+    // 🏢 Organisatorische Abteilungsrollen
+    ADMIN_HEAD(isProjectRole = false, isDepartmentRole = true, "Super-Administrator (Volle Systemkontrolle)"),
+    ADMIN(isProjectRole = false, isDepartmentRole = true, "Systemweiter Administrator"),
+    DEPARTMENT_HEAD(isProjectRole = false, isDepartmentRole = true, "Abteilungsleiter"),
+    MEMBER(isProjectRole = false, isDepartmentRole = true, "Standard-Abteilungsmitglied"),
+
+    // 📂 Projekt- & Teamrollen
+    OWNER(isProjectRole = true, isDepartmentRole = false, "Projekteigentümer"),
+    PROJECT_MANAGER(isProjectRole = true, isDepartmentRole = false, "Projektleiter"),
+    DEVELOPER(isProjectRole = true, isDepartmentRole = false, "Entwickler / Teammitglied")
 }
 
 // Erlaubt den Aufruf: RoleType.ADMIN.toEntity(roleRepository)

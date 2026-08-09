@@ -10,6 +10,7 @@ import com.backend.todo_api.dto.toDto
 import com.backend.todo_api.exceptions.ActionForbiddenException
 import com.backend.todo_api.model.ActionType
 import com.backend.todo_api.model.DepartmentSecurityResource
+import com.backend.todo_api.model.ResourceType
 import com.backend.todo_api.model.toEntity
 import com.backend.todo_api.model.toSecurityResource
 import jakarta.transaction.Transactional
@@ -24,21 +25,42 @@ class DepartmentService(
     private val permissionService: PermissionService
     )
 {
+    // 1️⃣ Öffentliche Methode (z.B. für Controller / Frontend mit Rechteprüfung)
+    fun getDepartmentDtoById(userId: String, departmentId: String): DepartmentDto {
+        val department = departmentRepository.findById(departmentId).orElseThrow {
+            IllegalArgumentException("Abteilung mit der ID $departmentId nicht gefunden.")
+        }
+
+        val userContexts = userContextResolver.resolveContexts(userId)
+
+        val canRead = permissionService.hasPermission(
+            userContexts = userContexts,
+            action = ActionType.READ,
+            resource = department.toSecurityResource()
+        )
+
+        if (!canRead) {
+            throw ActionForbiddenException("Zugriff verweigert: Du hast keine Berechtigung, diese Abteilung einzusehen.")
+        }
+
+        return department.toDto()
+    }
+
+    // 2️⃣ Interne Hilfsmethode (für Mapping in UserService / kein Permission-Check)
+    fun getDepartmentDtoById(departmentId: String?): DepartmentDto? {
+        if (departmentId.isNullOrBlank()) return null
+        return departmentRepository.findById(departmentId).map { it.toDto() }.orElse(null)
+    }
 
     // 📋 Gibt jetzt eine Liste von DTOs zurück
+// ✅ NACHHER (Richtig: Wer READ-Recht hat, bekommt ALLE Abteilungen):
     fun getAllDepartments(userId: String): List<DepartmentDto> {
-        val userContexts = userContextResolver.resolveContexts(userId)
-        val allDepartments = departmentRepository.findAll()
+        val contexts = userContextResolver.resolveContexts(userId)
+        val maxContext = permissionService.getMaxAllowedUserContext(contexts, ActionType.READ, ResourceType.DEPARTMENT)
+            ?: return emptyList()
 
-        return allDepartments
-            .filter { dept ->
-                permissionService.hasPermission(
-                    userContexts = userContexts,
-                    action = ActionType.READ,
-                    resource = dept.toSecurityResource()
-                )
-            }
-            .map { it.toDto() }
+        // 🎯 Wer die Berechtigung hat, sieht die Liste ALLER Abteilungen!
+        return departmentRepository.findAll().map { it.toDto() }
     }
 
     // ✨ Erstellt eine Abteilung und gibt das DTO zurück

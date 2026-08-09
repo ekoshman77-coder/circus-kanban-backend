@@ -5,6 +5,7 @@ import com.backend.todo_api.data.entity.RoleEntity
 import com.backend.todo_api.data.entity.ScopeEntity
 import com.backend.todo_api.data.repository.DepartmentRepository
 import com.backend.todo_api.data.repository.RolePermissionRepository
+import com.backend.todo_api.dto.MasterDataResponseDto
 import com.backend.todo_api.model.*
 
 import org.springframework.stereotype.Service
@@ -89,5 +90,13 @@ class PermissionService(
                     .filter { it.role.name == context.role.name }
                     .maxOf { it.targetScope.hierarchyLevel } // Hier reicht maxOf(), da der Filter nie leer ist!
             }
+    }
+
+    fun getMasterData(): MasterDataResponseDto {
+        return MasterDataResponseDto (
+            departmentScopes = ScopeType.values().filter { it.isDepartmentSelectable }.map { it.name },
+            projectRoles = RoleType.entries.filter { it.isProjectRole }.map { it.name },
+            departmentRoles = RoleType.entries.filter { it.isDepartmentRole }.map { it.name }
+        )
     }
 }

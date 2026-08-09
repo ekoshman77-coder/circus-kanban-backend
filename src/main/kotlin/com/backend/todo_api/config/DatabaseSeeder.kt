@@ -2,7 +2,6 @@ package com.backend.todo_api.config
 
 import com.backend.todo_api.constants.AppConstants
 import com.backend.todo_api.data.entity.DepartmentEntity
-import com.backend.todo_api.data.repository.RoleRepository
 import com.backend.todo_api.data.repository.ScopeRepository
 import com.backend.todo_api.model.ScopeType
 import org.springframework.boot.ApplicationArguments
@@ -30,11 +29,11 @@ class DatabaseSeeder(
         if (departmentCount == 0L) {
             println("ℹ️ Keine Abteilungen gefunden. Erzeuge die '${AppConstants.ADMIN_DEPARTMENT_NAME}'-Abteilung...")
 
-            val deptScope = scopeRepository.findByName(ScopeType.DEPARTMENT)
-                ?: throw IllegalStateException("DEPARTMENT Scope wurde nicht in der DB gefunden!")
+            val companyScope = scopeRepository.findByName(ScopeType.COMPANY)
+                ?: throw IllegalStateException("COMPANY Scope wurde nicht in der DB gefunden!")
 
-            // Die ID wird hier direkt als UUID-String in der Entity erzeugt!
-            val adminDepartment = DepartmentEntity(name = AppConstants.ADMIN_DEPARTMENT_NAME, defaultScope = deptScope)
+            // Die Admin-Abteilung bekommt als Basis-Scope den COMPANY-Scope
+            val adminDepartment = DepartmentEntity(name = AppConstants.ADMIN_DEPARTMENT_NAME, defaultScope = companyScope)
             entityManager.persist(adminDepartment)
 
             println("✅ '${AppConstants.ADMIN_DEPARTMENT_NAME}'-Abteilung erfolgreich mit ID ${adminDepartment.id} angelegt.")
@@ -48,7 +47,7 @@ class DatabaseSeeder(
 
         if (userCount == 0L) {
             println("⚠️ WARNUNG: Das System ist komplett leer! Kein Admin vorhanden.")
-            println("👉 System befindet sich im Setup-Modus. Die nächste Registrierung wird zum Admin!")
+            println("👉 System befindet sich im Setup-Modus. Die nächste Registrierung wird zum ADMIN_HEAD!")
         } else {
             println("✅ Bestehende User gefunden. Der Türsteher-Modus ist voll aktiv.")
         }

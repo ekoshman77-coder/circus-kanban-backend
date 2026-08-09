@@ -12,7 +12,6 @@ import com.backend.todo_api.data.repository.ProjectMemberRepository
 import com.backend.todo_api.data.repository.RoleRepository
 import com.backend.todo_api.dto.UserResponseDto
 import com.backend.todo_api.dto.ProjectMemberDto
-import com.backend.todo_api.dto.entityToUserResponseDto
 import com.backend.todo_api.exceptions.ActionForbiddenException
 import com.backend.todo_api.exceptions.UserNotFoundException
 import com.backend.todo_api.exceptions.ProjectNotFoundException
@@ -36,7 +35,8 @@ class ProjectTeamService(
     private val departmentRepository: DepartmentRepository,
     private val roleRepository: RoleRepository,
     private val userContextResolver: UserContextResolver,
-    private val permissionService: PermissionService
+    private val permissionService: PermissionService,
+    private val userService: UserService
 ) {
 
     /**
@@ -65,7 +65,7 @@ class ProjectTeamService(
             val coffeeAccount = coffeeAccountRepository.findById(user.id).orElse(null)
 
             ProjectMemberDto(
-                user = entityToUserResponseDto(user, coffeeAccount),
+                user = userService.entityToUserResponseDto(user, coffeeAccount),
                 projectRole = membership.role.name?.name ?: "NONE"
             )
         }
@@ -107,7 +107,7 @@ class ProjectTeamService(
             val coffeeAccount = coffeeAccountRepository.findById(user.id).orElse(null)
 
             ProjectMemberDto(
-                user = entityToUserResponseDto(user, coffeeAccount),
+                user = userService.entityToUserResponseDto(user, coffeeAccount),
                 projectRole = "NONE"
             )
         }
@@ -171,7 +171,7 @@ class ProjectTeamService(
         val coffeeAccount = coffeeAccountRepository.findById(finalUser.id).orElse(null)
 
         return ProjectMemberDto(
-            user = entityToUserResponseDto(finalUser, coffeeAccount),
+            user = userService.entityToUserResponseDto(finalUser, coffeeAccount),
         projectRole = roleFromFrontend
         )
     }
@@ -243,7 +243,7 @@ class ProjectTeamService(
         account.emoji = emoji
         coffeeAccountRepository.save(account)
 
-        return entityToUserResponseDto(targetUser, account)
+        return userService.entityToUserResponseDto(targetUser, account)
     }
 
     @Transactional(readOnly = true)
@@ -266,7 +266,7 @@ class ProjectTeamService(
         return allApprovedUsers.map { user ->
             val coffeeAccount = coffeeAccountRepository.findById(user.id).orElse(null)
             ProjectMemberDto(
-                user = entityToUserResponseDto(user, coffeeAccount),
+                user = userService.entityToUserResponseDto(user, coffeeAccount),
                 projectRole = "NONE"
             )
         }

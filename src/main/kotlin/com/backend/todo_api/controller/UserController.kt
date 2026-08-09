@@ -47,7 +47,7 @@ class UserController(private val userService: UserService) {
         }
         return try {
             val userDto = userService.login(dto)
-            val isUserAdmin = userService.isAdminDepartment(userDto.departmentId)
+            val isUserAdmin = userService.isAdminDepartment(userDto.department?.id)
             val roleName = if (isUserAdmin) "ROLE_ADMIN" else "ROLE_USER"
             val authorities = listOf(SimpleGrantedAuthority(roleName))
             val authentication = UsernamePasswordAuthenticationToken(userDto.id, null, authorities)
@@ -79,7 +79,7 @@ class UserController(private val userService: UserService) {
         }
         return try {
             val userDto = userService.register(dto)
-            val isUserAdmin = userService.isAdminDepartment(userDto.departmentId)
+            val isUserAdmin = userService.isAdminDepartment(userDto.department?.id)
             val roleName = if (isUserAdmin) "ROLE_ADMIN" else "ROLE_USER"
             val authorities = listOf(SimpleGrantedAuthority(roleName))
             val authentication = UsernamePasswordAuthenticationToken(userDto.id, null, authorities)
@@ -113,10 +113,10 @@ class UserController(private val userService: UserService) {
     fun updateProfile(
         @PathVariable id: String,
         @Validated(OnUpdate::class) @RequestBody dto: UserDto,
-        principal: Principal
+        principal: Principal?
     ): ResponseEntity<Any> {
         return try {
-            val currentUserId = principal.name
+            val currentUserId = getUserIdFromPrincipal(principal)
             val updatedUser = userService.updateUser(currentUserId,id, dto)
             ResponseEntity.ok(updatedUser)
         } catch (e: UserNotFoundException) {
@@ -133,10 +133,10 @@ class UserController(private val userService: UserService) {
     ])
     fun deleteUser(
         @PathVariable id: String,
-        principal: Principal
+        principal: Principal?
         ): ResponseEntity<Any> {
         return try {
-            val currentUserId = principal.name
+            val currentUserId = getUserIdFromPrincipal(principal)
             println("🗑️ [Backend-Controller] Soft-DELETE-Request erhalten für User-ID: $id")
             userService.deleteUser(currentUserId,id)
             ResponseEntity.noContent().build()
@@ -146,22 +146,25 @@ class UserController(private val userService: UserService) {
     }
 
     @GetMapping("/unapproved")
-    fun getUnapprovedUsers(principal: Principal): ResponseEntity<List<UserDto>> {
-        return ResponseEntity.ok(userService.getUnapprovedUsers(principal.name))
+    fun getUnapprovedUsers( principal: Principal? ): ResponseEntity<List<UserDto>> {
+        val currentUserId = getUserIdFromPrincipal(principal)
+        return ResponseEntity.ok(userService.getUnapprovedUsers(currentUserId))
     }
 
     @GetMapping("/approved")
-    fun getApprovedUsers(principal: Principal): ResponseEntity<List<UserDto>> {
-        return ResponseEntity.ok(userService.getApprovedUsers(principal.name))
+    fun getApprovedUsers( principal: Principal? ): ResponseEntity<List<UserDto>> {
+        val currentUserId = getUserIdFromPrincipal(principal)
+        return ResponseEntity.ok(userService.getApprovedUsers(currentUserId))
     }
 
     @PostMapping("/{userId}/approve")
     fun approveUser(
         @PathVariable userId: String,
         @Validated @RequestBody dto: UserApproveDto,
-        principal: Principal
+        principal: Principal?
     ): ResponseEntity<UserDto> {
-        return ResponseEntity.ok(userService.approveUser(principal.name, userId, dto))
+        val currentUserId = getUserIdFromPrincipal(principal)
+        return ResponseEntity.ok(userService.approveUser(currentUserId, userId, dto))
     }
 
     @GetMapping("/status/{userId}")
@@ -169,13 +172,13 @@ class UserController(private val userService: UserService) {
     @Operation(summary = "Eigenen Freischaltungs-Status pollen", description = "Ermöglicht dem wartenden Client zu prüfen, ob der Account freigeschaltet wurde. Aktualisiert die Sitzung bei Erfolg live.")
     fun getUserStatus(
         request: HttpServletRequest,
-        principal: Principal
+        principal: Principal?
     ): ResponseEntity<UserDto> {
-        val userId = principal.name
-        val userDto = userService.getUserById(userId,userId)
+        val currentUserId = getUserIdFromPrincipal(principal)
+        val userDto = userService.getUserById(currentUserId,currentUserId)
 
         if (userDto.isApproved) {
-            val isUserAdmin = userService.isAdminDepartment(userDto.departmentId)
+            val isUserAdmin = userService.isAdminDepartment(userDto.department?.id)
             val roleName = if (isUserAdmin) "ROLE_ADMIN" else "ROLE_USER"
 
             val authorities = listOf(SimpleGrantedAuthority(roleName))
