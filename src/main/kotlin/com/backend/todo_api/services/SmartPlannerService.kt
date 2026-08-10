@@ -24,7 +24,7 @@ class SmartPlannerService(
     private val focusPredictorService: FocusPredictorService,
     private val preferenceRepository: UserAiPreferenceRepository,
     private val todoService: TodoService
-) {
+): PlannerInterface {
 
     companion object {
         const val MAX_COOLDOWN_TURNS = 3
@@ -37,7 +37,7 @@ class SmartPlannerService(
     }
 
     @Transactional
-    fun processUserFeedback(
+    override fun processUserFeedback(
         userId: String, todoId: String, accepted: Boolean, rejectReason: String?, currentEnergy: String
     ) {
         val todo = todoRepository.findById(todoId).orElse(null) ?: return
@@ -88,7 +88,7 @@ class SmartPlannerService(
     }
 
     @Transactional
-    fun calculatePerfectRecommendation(
+    override fun calculatePerfectRecommendation(
         userId: String, userEnergy: String, workingTimeLeft: Double
     ): RecommendedTodoResponse {
         validateUserExists(userId, userRepository)
@@ -257,7 +257,7 @@ class SmartPlannerService(
     }
 
     @Transactional
-    fun snoozeTodoInBackend(todoId: String, snoozeDurationInMinutes: Int = 120): TodoEntity? {
+    override fun snoozeTodoInBackend(todoId: String, snoozeDurationInMinutes: Int): TodoEntity? {
         val todo = todoRepository.findById(todoId).orElse(null) ?: return null
 
         // Aktuelle Zeit + X Minuten in Millisekunden rechnen
