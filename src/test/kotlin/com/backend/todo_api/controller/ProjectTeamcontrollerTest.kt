@@ -1,6 +1,7 @@
 package com.backend.todo_api.controller
 
 import com.backend.todo_api.dto.AssignUserRequestDTO
+import com.backend.todo_api.dto.CoffeeAccountDto
 import com.backend.todo_api.dto.ProjectMemberDto
 import com.backend.todo_api.dto.UserResponseDto
 import com.backend.todo_api.exceptions.GlobalExceptionHandler
@@ -148,7 +149,8 @@ class ProjectTeamControllerTest {
 
     @Test
     fun `PUT - api-teams-{id}-coffee-account - sollte Kaffeekonto aktualisieren`() {
-        val updatedUser = UserResponseDto(id = "user-1", username = "user1", coffeeBalance = 10.5f, role = "Barista", emoji = "☕")
+        val updatedUser = UserResponseDto(id = "user-1", username = "user1",
+            coffeeAccount = CoffeeAccountDto( balance = 10.5f, role = "Barista", emoji = "☕"))
 
         every {
             projectTeamService.updateCoffeeAccount(mockUserId, "user-1", 10.5f, "Barista", "☕")

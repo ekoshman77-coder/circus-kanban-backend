@@ -2,17 +2,19 @@ package com.backend.todo_api.services
 
 import com.backend.todo_api.data.entity.TodoEntity
 import com.backend.todo_api.dto.RecommendedTodoResponse
+import com.backend.todo_api.model.EnergyLevel
+import com.backend.todo_api.model.FeedbackForPlanner
+import com.backend.todo_api.model.PlannerRecomendation
+import com.backend.todo_api.model.PlannerType
 
 interface PlannerInterface {
-    fun processUserFeedback(
+    val plannerType: PlannerType
+
+    fun processUserFeedback(feedback: FeedbackForPlanner)
+
+    fun calculatePerfectRecommendation(
         userId: String,
-        todoId: String,
-        accepted: Boolean,
-        rejectReason: String?,
-        currentEnergy: String
-    )
-
-    fun calculatePerfectRecommendation(userId: String, userEnergy: String, workingTimeLeft: Double): RecommendedTodoResponse
-
-    fun snoozeTodoInBackend(todoId: String, snoozeDurationInMinutes: Int = 120): TodoEntity?
+        candidates: List<TodoEntity>,
+        userEnergy: EnergyLevel,
+        workingTimeLeft: Long): PlannerRecomendation?
 }
