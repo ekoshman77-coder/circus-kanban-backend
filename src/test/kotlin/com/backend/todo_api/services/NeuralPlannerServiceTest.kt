@@ -82,8 +82,7 @@ class NeuralPlannerServiceTest {
         verify(exactly = 1) {
             neuralNetwork.train(
                 inputs = any(),
-                target = 1.0,
-                learningRate = any()
+                target = 1.0
             )
         }
     }
@@ -108,8 +107,7 @@ class NeuralPlannerServiceTest {
         verify(exactly = 1) {
             neuralNetwork.train(
                 inputs = any(),
-                target = 0.0,
-                learningRate = any()
+                target = 0.0
             )
         }
     }

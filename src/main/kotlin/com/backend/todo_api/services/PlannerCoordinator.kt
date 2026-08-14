@@ -9,6 +9,7 @@ import com.backend.todo_api.data.repository.RecommendationRoundRepository
 import com.backend.todo_api.data.repository.TodoRepository
 import com.backend.todo_api.data.repository.UserRepository
 import com.backend.todo_api.dto.PlannerFeedbackRequest
+import com.backend.todo_api.dto.PlannerRecommendationDetail
 import com.backend.todo_api.dto.PlannerRecommendationsResponse
 import com.backend.todo_api.dto.RecommendedTodoResponse
 import com.backend.todo_api.model.EnergyLevel
@@ -49,17 +50,15 @@ class PlannerCoordinator(
         // 3. Alle Todos gesnoozed → direktes Fallback.
         //    Keine Planner und keine Recommendation-Round.
         if (nonSnoozedPool.isEmpty()) {
-            val earliestWakeupTodo =
-                matchPool.minByOrNull { it.snoozedUntil }
+            val earliestWakeupTodo = matchPool.minByOrNull { it.snoozedUntil }
 
             return PlannerRecommendationsResponse(
                 roundId = "",
                 recommendations = listOf(
                     RecommendedTodoResponse(
                         todo = earliestWakeupTodo?.let { todoService.mapToDto(it) },
-                        plannerType = null,
-                        modeCode = "STANDARD",
-                        reasonCode = "NO_TODOS_LEFT"
+                        plannerDetails = emptyList(), // Keine KI beteiligt!
+                        modeCode = "ALL_SNOOZED"      // 🎯 Jetzt glasklar!
                     )
                 )
             )
@@ -112,15 +111,23 @@ class PlannerCoordinator(
         val savedRound = recommendationRoundRepository.save(round)
 
         // 10. Interne Planner-Ergebnisse in API-Responses umwandeln.
-        val recommendations = plannerRecommendations.map { recommendation ->
-            val todo = candidatePool
-                .firstOrNull { it.id == recommendation.todoId }
+        val groupedRecommendations = plannerRecommendations.groupBy { it.todoId }
+
+        val recommendations = groupedRecommendations.map { (todoId, plannerRecs) ->
+            val todo = candidatePool.firstOrNull { it.id == todoId }
+
+            val details = plannerRecs.map { rec ->
+                PlannerRecommendationDetail(
+                    plannerType = rec.plannerType,
+                    score = rec.score,
+                    reasonCode = rec.reason
+                )
+            }
 
             RecommendedTodoResponse(
                 todo = todo?.let { todoService.mapToDto(it) },
-                plannerType = recommendation.plannerType,
-                modeCode = "STANDARD",
-                reasonCode = recommendation.reason
+                plannerDetails = details,
+                modeCode = "STANDARD"
             )
         }
 
@@ -149,6 +156,7 @@ class PlannerCoordinator(
         pool.forEach { todo ->
             if (todo.cooldownTurns > 0) {
                 todo.cooldownTurns -= 1
+                println("cooldown for todo ${todo.task} after decrement = ${todo.cooldownTurns}")
                 todoRepository.save(todo)
             }
         }
@@ -159,6 +167,7 @@ class PlannerCoordinator(
     ): List<TodoEntity> {
 
         for (cooldownLevel in 0..MAX_COOLDOWN_TURNS) {
+            println("check cooldownlevel = ${cooldownLevel}")
             val candidates = pool.filter {
                 it.cooldownTurns == cooldownLevel
             }
@@ -166,6 +175,7 @@ class PlannerCoordinator(
             if (candidates.isNotEmpty()) {
                 return candidates
             }
+            println("no candidates found")
         }
 
         return pool
@@ -191,22 +201,43 @@ class PlannerCoordinator(
 
     @Transactional
     fun processUserFeedback(request: PlannerFeedbackRequest) {
-        // 1. RecommendationRound anhand der roundId laden
-        val round = recommendationRoundRepository.findById(request.roundId).orElse(null) ?: return
+        request.rejectedTodos.forEach { r ->
+            println("   -> Rejected TodoId: ${r.todoId} | Reason: ${r.rejectReason}")
+        }
+        println("--------------------------------------------------")
 
-        // Map für schnellen Zugriff auf die gespeicherten Empfehlungen dieser Runde
-        val recommendationMap = round.recommendations.associateBy { it.todoId }
+        // 1. RecommendationRound anhand der roundId laden
+        val round = recommendationRoundRepository.findById(request.roundId).orElse(null)
+        if (round == null) {
+            println("❌ [COORDINATOR ERROR] RecommendationRound mit ID '${request.roundId}' NICHT in DB gefunden!")
+            println("==================================================")
+            return
+        }
+
+        println("🔍 [COORDINATOR] DB Round gefunden mit ID: '${round.id}'")
+        println("🔍 [COORDINATOR] Anzahl gespeicherter Recommendations in dieser Round: ${round.recommendations.size}")
+        round.recommendations.forEach { rec ->
+            println("   -> SavedRec in DB: TodoId=${rec.todoId} | PlannerType=${rec.plannerType} | Score=${rec.score}")
+        }
+        println("--------------------------------------------------")
 
         // 2. Akzeptiertes Todo verarbeiten (falls eins gewählt wurde)
         request.acceptedTodoId?.let { acceptedId ->
+            println("🚀 [COORDINATOR] Verarbeite ACCEPTED TodoId: $acceptedId")
             val todo = todoRepository.findById(acceptedId).orElse(null)
             if (todo != null) {
                 todo.cooldownTurns = 0
                 todoRepository.save(todo)
             }
 
-            val savedRec = recommendationMap[acceptedId]
-            if (savedRec != null) {
+            val matchingRecs = round.recommendations.filter { it.todoId == acceptedId }
+            println("🔎 [COORDINATOR] Matching Recs für Accepted Todo ($acceptedId): ${matchingRecs.size}")
+
+            if (matchingRecs.isEmpty()) {
+                println("⚠️ [COORDINATOR WARN] Keine gespeicherte Rec in DB für Accepted Todo $acceptedId gefunden!")
+            }
+
+            matchingRecs.forEach { savedRec ->
                 val feedback = FeedbackForPlanner(
                     userId = request.userId,
                     todoId = acceptedId,
@@ -218,22 +249,29 @@ class PlannerCoordinator(
                     timeUntilDue = savedRec.timeUntilDue,
                     effort = savedRec.effort
                 )
-                // Nur den Planner ansprechen, der dieses Todo vorgeschlagen hat
-                planners.firstOrNull { it.plannerType == savedRec.plannerType }
-                    ?.processUserFeedback(feedback)
+                val targetPlanner = planners.firstOrNull { it.plannerType == savedRec.plannerType }
+                println("👉 [COORDINATOR] Sende ACCEPTED Feedback an Planner: ${savedRec.plannerType} (Gefunden: ${targetPlanner != null})")
+                targetPlanner?.processUserFeedback(feedback)
             }
         }
 
         // 3. Abgelehnte Todos verarbeiten
         request.rejectedTodos.forEach { rejected ->
+            println("❌ [COORDINATOR] Verarbeite REJECTED TodoId: ${rejected.todoId}")
             val todo = todoRepository.findById(rejected.todoId).orElse(null)
             if (todo != null) {
                 todo.cooldownTurns = MAX_COOLDOWN_TURNS + 1
                 todoRepository.save(todo)
             }
 
-            val savedRec = recommendationMap[rejected.todoId]
-            if (savedRec != null) {
+            val matchingRecs = round.recommendations.filter { it.todoId == rejected.todoId }
+            println("🔎 [COORDINATOR] Matching Recs für Rejected Todo (${rejected.todoId}): ${matchingRecs.size}")
+
+            if (matchingRecs.isEmpty()) {
+                println("⚠️ [COORDINATOR WARN] Keine gespeicherte Rec in DB für Rejected Todo ${rejected.todoId} gefunden!")
+            }
+
+            matchingRecs.forEach { savedRec ->
                 val feedback = FeedbackForPlanner(
                     userId = request.userId,
                     todoId = rejected.todoId,
@@ -245,11 +283,12 @@ class PlannerCoordinator(
                     timeUntilDue = savedRec.timeUntilDue,
                     effort = savedRec.effort
                 )
-                // Nur den jeweiligen Planner ansprechen
-                planners.firstOrNull { it.plannerType == savedRec.plannerType }
-                    ?.processUserFeedback(feedback)
+                val targetPlanner = planners.firstOrNull { it.plannerType == savedRec.plannerType }
+                println("👉 [COORDINATOR] Sende REJECTED Feedback an Planner: ${savedRec.plannerType} (Gefunden: ${targetPlanner != null})")
+                targetPlanner?.processUserFeedback(feedback)
             }
         }
+        println("==================================================")
     }
 
     /**

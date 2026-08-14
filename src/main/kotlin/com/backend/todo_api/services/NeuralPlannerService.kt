@@ -81,11 +81,18 @@ class NeuralPlannerService(
         val currentTime = System.currentTimeMillis()
         val timeUntilDue = if (todo.dueDate > 0) todo.dueDate - currentTime else Long.MAX_VALUE
 
+        val normDueDate = normalizeDueDate(timeUntilDue)
+        val normEffort = normalizeEffort(todo.effort)
+        val normEnergy = normalizeEnergy(userEnergy)
+
+        // 💡 NEU & DYNAMISCH: Passt der Aufwand zur aktuellen Energie? (1.0 = perfektes Match)
+        val energyEffortMatch = 1.0 - kotlin.math.abs(normEnergy - normEffort)
+
         return doubleArrayOf(
-            normalizeDueDate(timeUntilDue),
-            normalizeEffort(todo.effort),
-            normalizeEnergy(userEnergy),
-            normalizeWorkingTime(workingTimeLeft)
+            normDueDate,                                    // Input 1: Fälligkeit (0.0 bis 1.0)
+            normEffort,                                     // Input 2: Aufwand (0.0 bis 1.0)
+            energyEffortMatch,                              // Input 3: Energy-Match (Jedes Todo hat einen ANDEREN Wert!)
+            normalizeWorkingTime(workingTimeLeft)     // Input 4: Passt Todo in verbleibende Zeit?
         )
     }
 
@@ -113,9 +120,12 @@ class NeuralPlannerService(
         }
     }
 
-    // 4. Working Time Left (Skaliert z.B. auf max. 8 Stunden / 480 Minuten / Stundeneinheiten)
-    private fun normalizeWorkingTime(workingTimeLeft: Long): Double {
-        val maxWorkingTime = 24.0 // max. 8 Stunden
-        return (workingTimeLeft.toDouble() / maxWorkingTime).coerceIn(0.0, 1.0)
+    // Skaliert z. B. verbleibende Arbeitszeit in Minuten (max. 8 Stunden = 480 Min)
+    private fun normalizeWorkingTime(workingTimeLeftMinutes: Long): Double {
+        val maxMinutes = 480.0 // 8 Stunden
+        val normalizedTimeLeft = (workingTimeLeftMinutes.toDouble() / maxMinutes).coerceIn(0.0, 1.0)
+
+        // Gibt einen Wert zurück, wie gut die Restzeit für den Effort noch reicht
+        return normalizedTimeLeft
     }
 }

@@ -20,7 +20,7 @@ class UserAiPreference(
 
     @Enumerated(EnumType.STRING)
     @Column(name = "preference_type", nullable = false)
-    val preferenceType: PreferenceType,
+    val preferenceType: PreferenceType = PreferenceType.MOTIVATION,
 
     @Column(name = "preference_value", nullable = false)
     val preferenceValue: String = "", // "aufwendig", "leicht", "lang", "Tag:Doku" etc.

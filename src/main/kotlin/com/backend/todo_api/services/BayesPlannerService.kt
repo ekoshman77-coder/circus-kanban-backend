@@ -4,6 +4,7 @@ import com.backend.todo_api.data.entity.PlannerSettingsEntity
 import com.backend.todo_api.data.entity.TodoEntity
 import com.backend.todo_api.data.entity.UserAiPreference
 import com.backend.todo_api.data.repository.PlannerSettingsRepository
+import com.backend.todo_api.data.repository.TodoRepository
 import com.backend.todo_api.data.repository.UserAiPreferenceRepository
 import com.backend.todo_api.model.EnergyLevel
 import com.backend.todo_api.model.FeedbackForPlanner
@@ -20,6 +21,7 @@ class BayesPlannerService(
     private val plannerSettingsRepository: PlannerSettingsRepository, // ⚡ NEU: Hier kommen die Regler-Werte her!
     private val focusPredictorService: FocusPredictorService,
     private val preferenceRepository: UserAiPreferenceRepository,
+    private val todoRepository: TodoRepository
 ): PlannerInterface {
     override val plannerType: PlannerType
         get() = PlannerType.BAYES
@@ -29,50 +31,64 @@ class BayesPlannerService(
     }
 
     private fun isUrgent(todo: TodoEntity): Boolean {
-        if (todo.dueDate == null) return false
         val fortyEightHoursInMs = 48 * 60 * 60 * 1000
         return (todo.dueDate - System.currentTimeMillis()) <= fortyEightHoursInMs
     }
 
-
     @Transactional
     override fun processUserFeedback(feedback: FeedbackForPlanner) {
-//        val todo = todoRepository.findById(todoId).orElse(null) ?: return
-//
-//        if (accepted) {
-//            // 🎉 BELOHNUNG: Nutzer hat die Aufgabe gestartet!
-//            // Wir belohnen die Aufwands-Kategorie bei dieser Energie
-//            val effortCategory = if (todo.effort > 3) "aufwendig" else "leicht"
-//            updateScore(userId, currentEnergy, PreferenceType.EFFORT, effortCategory, plusPoints = 5)
-//
-//            todo.cooldownTurns = 0
-//            todoRepository.save(todo)
-//        } else {
-//            todo.cooldownTurns = MAX_COOLDOWN_TURNS + 1
-//            todoRepository.save(todo)
-//            // 👎 BESTRAFUNG: Nutzer hat abgelehnt. Jetzt schauen wir, WARUM:
-//            when (rejectReason) {
-//                "too_heavy" -> {
-//                    // Es war zu schwer für die aktuelle Energie
-//                    val effortCategory = if (todo.effort > 3) "aufwendig" else "leicht"
-//                    updateScore(userId, currentEnergy, PreferenceType.EFFORT,", effortCategory, plusPoints = -10)
-//                }
-//
-//                "too_long" -> {
-//                    // Es dauert zu lange (unabhängig von der Energie -> "any")
-//                    val timeCategory = if (todo.effort > 3) "lang" else "kurz"
-//                    updateScore(userId, EnergyLevel.ANY, PreferenceType.TIME, timeCategory, plusPoints = -8)
-//                }
-//
-//                "no_motivation" -> {
-//                    // Keine Lust auf diesen spezifischen Typ (z.B. Tag/Kategorie des To-Dos)
-//                    // Angenommen dein Todo hat ein Feld 'category' oder 'tag' (z.B. "Doku")
-//                    val todoTag = todo.category ?: "Standard"
-//                    updateScore(userId, EnergyLevel.ANY, PreferenceType.MOTIVATION, "Tag:$todoTag", plusPoints = -15)
-//                }
-//            }
-//        }
+        val todo = todoRepository.findById(feedback.todoId).orElse(null) ?: return
+
+        if (feedback.accepted) {
+            // 🎉 BELOHNUNG: Nutzer hat die Empfehlung akzeptiert!
+            val effortCategory = if ((todo.effort ?: 0) > 3) "aufwendig" else "leicht"
+
+            updateScore(
+                userId = feedback.userId,
+                energy = feedback.userEnergy,
+                type = PreferenceType.EFFORT,
+                value = effortCategory,
+                plusPoints = 5
+            )
+        } else {
+            // 👎 BESTRAFUNG: Punkteabzug je nach Ablehnungsgrund (rejectReason)
+            when (feedback.rejectReason) {
+                "too_heavy" -> {
+                    val effortCategory = if ((todo.effort ?: 0) > 3) "aufwendig" else "leicht"
+                    updateScore(
+                        userId = feedback.userId,
+                        energy = feedback.userEnergy,
+                        type = PreferenceType.EFFORT,
+                        value = effortCategory,
+                        plusPoints = -10
+                    )
+                }
+
+                "too_long" -> {
+                    val timeCategory = if ((todo.effort ?: 0) > 3) "lang" else "kurz"
+                    updateScore(
+                        userId = feedback.userId,
+                        energy = EnergyLevel.ANY,
+                        type = PreferenceType.TIME,
+                        value = timeCategory,
+                        plusPoints = -8
+                    )
+                }
+
+                "no_motivation" -> {
+                    val todoTag = todo.category ?: "Standard"
+                    updateScore(
+                        userId = feedback.userId,
+                        energy = EnergyLevel.ANY,
+                        type = PreferenceType.MOTIVATION,
+                        value = "Tag:$todoTag",
+                        plusPoints = -15
+                    )
+                }
+            }
+        }
     }
+
 
     // Hilfsmethode: Sucht den Eintrag oder legt ihn neu an und verändert den Score
     private fun updateScore(userId: String, energy: EnergyLevel, type: PreferenceType, value: String, plusPoints: Int) {
