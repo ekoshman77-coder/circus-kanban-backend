@@ -34,6 +34,7 @@ class ProjectTeamServiceTest {
     private val roleRepository: RoleRepository = mockk()
     private val userContextResolver: UserContextResolver = mockk()
     private val permissionService: PermissionService = mockk()
+    private val userService: UserService = mockk()
 
     private lateinit var projectTeamService: ProjectTeamService
 
@@ -50,7 +51,8 @@ class ProjectTeamServiceTest {
             departmentRepository,
             roleRepository,
             userContextResolver,
-            permissionService
+            permissionService,
+            userService = userService
         )
 
         // Standardmäßig lösen wir den UserContext auf

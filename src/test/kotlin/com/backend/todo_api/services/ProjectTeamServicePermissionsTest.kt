@@ -23,6 +23,7 @@ class ProjectTeamServicePermissionsTest {
     private val userContextResolver: UserContextResolver = mockk()
     private val coffeeAccountRepository: CoffeeAccountRepository = mockk()
     private val departmentRepository: DepartmentRepository = mockk()
+    private val userService: UserService = mockk()
 
     private lateinit var projectTeamService: ProjectTeamService
 
@@ -41,7 +42,8 @@ class ProjectTeamServicePermissionsTest {
             departmentRepository,
             roleRepository,
             userContextResolver,
-            permissionService
+            permissionService,
+            userService = userService
         )
     }
 

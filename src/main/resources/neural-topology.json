@@ -1,0 +1,14 @@
+{
+  "name": "PlannerEvaluationNet",
+  "nodes": [
+    { "id": "LEAF_1", "type": "LEAF", "inputCount": 4 },
+    { "id": "LEAF_2", "type": "LEAF", "inputCount": 4 },
+    { "id": "LEAF_3", "type": "LEAF", "inputCount": 4 },
+    { "id": "LEAF_4", "type": "LEAF", "inputCount": 4 },
+    {
+      "id": "ROOT",
+      "type": "ROOT",
+      "children": ["LEAF_1", "LEAF_2", "LEAF_3", "LEAF_4"]
+    }
+  ]
+}

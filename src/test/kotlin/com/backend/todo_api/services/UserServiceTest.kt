@@ -7,6 +7,7 @@ import com.backend.todo_api.dto.UserDto
 import com.backend.todo_api.exceptions.ActionForbiddenException
 import com.backend.todo_api.exceptions.UserNotFoundException
 import com.backend.todo_api.model.ActionType
+import com.backend.todo_api.model.RoleType
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.verify
@@ -29,6 +30,7 @@ class UserServiceTest {
     private val roleRepository: RoleRepository = mockk(relaxed = true)
     private val userContextResolver: UserContextResolver = mockk()
     private val permissionService: PermissionService = mockk()
+    private val departmentService: DepartmentService = mockk()
 
     private lateinit var userService: UserService
 
@@ -50,6 +52,7 @@ class UserServiceTest {
             roleRepository,
             permissionService,
             userContextResolver,
+            departmentService
         )
 
         // Standard-Mocking für Contexts
@@ -134,7 +137,7 @@ class UserServiceTest {
     @Test
     fun `approveUser sollte User freischalten, wenn Admin-Berechtigung vorliegt`() {
         val targetUser = UserEntity(id = targetUserId, isApproved = false)
-        val dto = UserApproveDto(departmentId = "dept-100")
+        val dto = UserApproveDto(departmentId = "dept-100", departmentRole = RoleType.DEVELOPER)
 
         every { userRepository.findById(targetUserId) } returns Optional.of(targetUser)
         every { permissionService.hasPermission(mockContexts, ActionType.UPDATE, any()) } returns true
