@@ -2,6 +2,7 @@ package com.backend.todo_api.services
 
 import com.backend.todo_api.data.entity.UserEntity
 import com.backend.todo_api.data.repository.*
+import com.backend.todo_api.dto.DepartmentDto
 import com.backend.todo_api.dto.UserApproveDto
 import com.backend.todo_api.dto.UserDto
 import com.backend.todo_api.exceptions.ActionForbiddenException
@@ -58,6 +59,11 @@ class UserServiceTest {
         // Standard-Mocking für Contexts
         every { userContextResolver.resolveContexts(currentUserId) } returns mockContexts
         every { userRepository.save(any()) } answers { firstArg() }
+        every { departmentService.getDepartmentDtoById(any()) } returns DepartmentDto(
+            id = "dept-1",
+            name = "Development"
+        )
+        every { coffeeAccountRepository.findById(any()) } returns Optional.empty()
     }
 
     // --- 1. updateUser TESTS ---

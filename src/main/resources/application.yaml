@@ -10,6 +10,8 @@ spring:
     store-type: jdbc
     jdbc:
       initialize-schema: always
+
+server:
   servlet:
     session:
       timeout: 7d

@@ -2,6 +2,7 @@ package com.backend.todo_api.services
 
 import com.backend.todo_api.data.entity.*
 import com.backend.todo_api.data.repository.*
+import com.backend.todo_api.dto.UserResponseDto
 import com.backend.todo_api.exceptions.ActionForbiddenException
 import com.backend.todo_api.exceptions.ProjectNotFoundException
 import com.backend.todo_api.exceptions.UserNotFoundException
@@ -66,7 +67,12 @@ class ProjectTeamServicePermissionsTest {
 
         // Am Ende der Methode wird das Kaffeekonto geladen
         every { coffeeAccountRepository.findById(targetUserId) } returns Optional.empty()
-
+        every { userService.entityToUserResponseDto(any(), any()) } returns UserResponseDto(
+            id = targetUserId,
+            username = "Developer",
+            firstName = "Test",
+            lastName = "User"
+        )
         assertDoesNotThrow {
             projectTeamService.assignUserToProject(
                 currentUserId = currentUserId,
@@ -112,6 +118,12 @@ class ProjectTeamServicePermissionsTest {
         every { userContextResolver.resolveContexts(currentUserId) } returns emptyList()
         every { permissionService.hasPermission(any(), ActionType.READ, any()) } returns true
         every { coffeeAccountRepository.findById(targetUserId) } returns Optional.empty()
+        every { userService.entityToUserResponseDto(any(), any()) } returns UserResponseDto(
+            id = targetUserId,
+            username = "Developer",
+            firstName = "Test",
+            lastName = "User"
+        )
 
         val result = projectTeamService.getMembersForProject(projectId, currentUserId)
 
@@ -151,6 +163,12 @@ class ProjectTeamServicePermissionsTest {
         every { permissionService.hasPermission(any(), ActionType.UPDATE, any()) } returns true
         every { coffeeAccountRepository.findById(targetUserId) } returns Optional.of(coffeeAccount)
         every { coffeeAccountRepository.save(any()) } answers { firstArg() }
+        every { userService.entityToUserResponseDto(any(), any()) } returns UserResponseDto(
+            id = targetUserId,
+            username = "Developer",
+            firstName = "Test",
+            lastName = "User"
+        )
 
         val response = projectTeamService.updateCoffeeAccount(
             currentUserId = currentUserId,

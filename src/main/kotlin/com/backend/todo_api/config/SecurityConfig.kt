@@ -1,8 +1,10 @@
 package com.backend.todo_api.config
 
 import jakarta.servlet.FilterChain
+import jakarta.servlet.ServletContext
 import jakarta.servlet.http.HttpServletRequest
 import jakarta.servlet.http.HttpServletResponse
+import org.springframework.boot.web.servlet.ServletContextInitializer
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
 import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity
@@ -16,15 +18,29 @@ import org.springframework.security.web.csrf.CsrfToken
 import org.springframework.security.web.csrf.CsrfTokenRequestHandler // Das Interface
 import org.springframework.security.web.csrf.DefaultCsrfToken
 import org.springframework.security.web.header.writers.XXssProtectionHeaderWriter
+import org.springframework.session.config.SessionRepositoryCustomizer
+import org.springframework.session.jdbc.JdbcIndexedSessionRepository
+import org.springframework.session.jdbc.config.annotation.web.http.EnableJdbcHttpSession
 import org.springframework.web.cors.CorsConfiguration
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource
 import org.springframework.web.filter.OncePerRequestFilter
+import java.time.Duration
 import java.util.function.Supplier
 
 @Configuration
 @EnableWebSecurity
 @EnableMethodSecurity
+@EnableJdbcHttpSession(maxInactiveIntervalInSeconds = 604800)
 class SecurityConfig {
+    @Bean
+    fun servletContextInitializer(): ServletContextInitializer {
+        return ServletContextInitializer { servletContext: ServletContext ->
+            // Das hier zwingt den Tomcat, das Cookie mit einem festen Ablaufdatum zu schreiben
+            servletContext.sessionCookieConfig.maxAge = 604800 // 7 Tage
+            servletContext.sessionCookieConfig.isHttpOnly = true
+            servletContext.sessionCookieConfig.path = "/"
+        }
+    }
 
     @Bean
     fun passwordEncoder(): BCryptPasswordEncoder {
@@ -34,10 +50,20 @@ class SecurityConfig {
     @Bean
     fun securityFilterChain(http: HttpSecurity): SecurityFilterChain {
         http
-            .securityContext { securityContext ->
-                securityContext.securityContextRepository(
-                    org.springframework.security.web.context.HttpSessionSecurityContextRepository()
-                )
+//            .securityContext { securityContext ->
+//                securityContext.securityContextRepository(
+//                    org.springframework.security.web.context.HttpSessionSecurityContextRepository()
+//                )
+//            }
+//
+//            .sessionManagement { session ->
+//                session.sessionCreationPolicy(org.springframework.security.config.http.SessionCreationPolicy.IF_REQUIRED)
+//            }
+
+            .sessionManagement { session ->
+                // Wir lassen Spring Boot das automatisch regeln, da Spring Session JDBC
+                // den Session-Mechanismus für uns "übernimmt".
+                session.sessionCreationPolicy(org.springframework.security.config.http.SessionCreationPolicy.IF_REQUIRED)
             }
             // 1. CORS
             .cors { cors ->
@@ -132,5 +158,13 @@ private class PlaintextCsrfTokenRequestHandler : CsrfTokenRequestHandler {
         return input.map { char ->
             if (char.isLetterOrDigit()) (char.code + 2).toChar() else char
         }.joinToString("")
+    }
+}
+
+
+@Bean
+fun sessionRepositoryCustomizer(): SessionRepositoryCustomizer<JdbcIndexedSessionRepository> {
+    return SessionRepositoryCustomizer { repository ->
+        repository.setDefaultMaxInactiveInterval(java.time.Duration.ofDays(7))
     }
 }
