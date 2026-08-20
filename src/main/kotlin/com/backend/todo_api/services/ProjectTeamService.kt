@@ -22,6 +22,7 @@ import com.backend.todo_api.model.ActionType
 import com.backend.todo_api.model.ProjectSecurityResource
 import com.backend.todo_api.model.RoleType
 import com.backend.todo_api.model.UserSecurityResource
+import com.backend.todo_api.model.toEntity
 import com.backend.todo_api.model.toSecurityResource
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
@@ -117,7 +118,7 @@ class ProjectTeamService(
      * ➕ Weist einen User einem Projekt zu
      */
     @Transactional
-    fun assignUserToProject(currentUserId: String, projectId: String, userId: String, role: String): ProjectMemberDto {
+    fun assignUserToProject(currentUserId: String, projectId: String, userId: String, role: RoleType): ProjectMemberDto {
         val project = projectRepository.findById(projectId)
             .orElseThrow { ProjectNotFoundException("Projekt mit ID $projectId nicht gefunden!") }
 
@@ -133,11 +134,6 @@ class ProjectTeamService(
 
         if (!hasAccess) {
             throw ActionForbiddenException("Keine Berechtigung zum Hinzufügen von Teammitgliedern zum Projekt $projectId")
-        }
-
-        val roleFromFrontend = role.trim()
-        if (roleFromFrontend.isBlank()) {
-            throw TeamValidationException("Es muss zwingend eine Projekt-Rolle übergeben werden!")
         }
 
         val existingMembership = projectMemberRepository.findByUserIdAndProjectId(userId, projectId)
@@ -163,7 +159,7 @@ class ProjectTeamService(
                 throw UserNotFoundException("User existiert nicht")
             }
 
-            val newMembership = ProjectMemberEntity(project = project, user = user, role = RoleEntity())
+            val newMembership = ProjectMemberEntity(project = project, user = user, role = role.toEntity(roleRepository))
             projectMemberRepository.save(newMembership)
             finalUser = user
         }
@@ -172,7 +168,7 @@ class ProjectTeamService(
 
         return ProjectMemberDto(
             user = userService.entityToUserResponseDto(finalUser, coffeeAccount),
-        projectRole = roleFromFrontend
+            projectRole = role.name
         )
     }
 
@@ -199,6 +195,8 @@ class ProjectTeamService(
 
         val membership = projectMemberRepository.findByUserIdAndProjectId(targetUserId, projectId)
         if (membership != null) {
+            project.teamMemberships.remove(membership)
+            membership.user.projectMemberships.remove(membership)
             projectMemberRepository.delete(membership)
         }
     }
