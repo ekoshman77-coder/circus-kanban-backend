@@ -11,6 +11,7 @@ import com.backend.todo_api.dto.DepartmentDto
 import com.backend.todo_api.exceptions.ActionForbiddenException
 import com.backend.todo_api.model.ActionType
 import com.backend.todo_api.model.DepartmentSecurityResource
+import com.backend.todo_api.model.ResourceType
 import com.backend.todo_api.model.ScopeType
 import io.mockk.*
 import org.junit.jupiter.api.Assertions.*
@@ -46,25 +47,36 @@ class DepartmentServiceTest {
     // --- 1. GET ALL DEPARTMENTS ---
 
     @Test
-    fun `getAllDepartments sollte nur Abteilungen zurueckgeben für die Leserechte bestehen`() {
-        val dept1 = DepartmentEntity(id = "1", name = "HR", defaultScope = ScopeEntity(name = ScopeType.DEPARTMENT))
-        val dept2 = DepartmentEntity(id = "2", name = "IT", defaultScope = ScopeEntity(name = ScopeType.DEPARTMENT))
+    fun `getAllDepartments sollte alle Abteilungen zurueckgeben wenn MaxAllowedUserContext existiert`() {
+        val dept1 = DepartmentEntity(id = "1", name = "HR")
+        val dept2 = DepartmentEntity(id = "2", name = "IT")
 
         every { userContextResolver.resolveContexts(userId) } returns emptyList()
-        every { departmentRepository.findAll() } returns listOf(dept1, dept2)
+        // NEU: Mocken des globalen Berechtigungs-Checks
+        every {
+            permissionService.getMaxAllowedUserContext(any(), ActionType.READ, ResourceType.DEPARTMENT)
+        } returns mockk() // Irgendein Kontext wird zurückgegeben
 
-        // Simuliere: User darf HR sehen, aber IT nicht
-        every {
-            permissionService.hasPermission(any(), ActionType.READ, match { (it as DepartmentSecurityResource).departmentId == "1" })
-        } returns true
-        every {
-            permissionService.hasPermission(any(), ActionType.READ, match { (it as DepartmentSecurityResource).departmentId == "2" })
-        } returns false
+        every { departmentRepository.findAll() } returns listOf(dept1, dept2)
 
         val result = departmentService.getAllDepartments(userId)
 
-        assertEquals(1, result.size)
+        assertEquals(2, result.size)
         assertEquals("HR", result[0].name)
+        assertEquals("IT", result[1].name)
+    }
+
+    @Test
+    fun `getAllDepartments sollte leere Liste zurueckgeben wenn kein READ-Recht vorhanden ist`() {
+        every { userContextResolver.resolveContexts(userId) } returns emptyList()
+        // NEU: Mocken, dass kein Kontext gefunden wird
+        every {
+            permissionService.getMaxAllowedUserContext(any(), ActionType.READ, ResourceType.DEPARTMENT)
+        } returns null
+
+        val result = departmentService.getAllDepartments(userId)
+
+        assertTrue(result.isEmpty())
     }
 
     // --- 2. CREATE DEPARTMENT ---

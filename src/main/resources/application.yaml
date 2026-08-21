@@ -7,9 +7,12 @@ spring:
     hibernate:
       ddl-auto: update
   session:
-    store-type: jdbc
     jdbc:
       initialize-schema: always
+      platform: postgresql
+      table-name: spring_session
+
+server:
   servlet:
     session:
       timeout: 7d

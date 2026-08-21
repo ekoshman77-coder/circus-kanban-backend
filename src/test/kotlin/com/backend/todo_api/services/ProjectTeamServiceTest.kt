@@ -8,6 +8,7 @@ import com.backend.todo_api.data.repository.ProjectMemberRepository
 import com.backend.todo_api.data.repository.ProjectRepository
 import com.backend.todo_api.data.repository.RoleRepository
 import com.backend.todo_api.data.repository.UserRepository
+import com.backend.todo_api.dto.UserResponseDto
 import com.backend.todo_api.exceptions.ActionForbiddenException
 import com.backend.todo_api.exceptions.ProjectNotFoundException
 import com.backend.todo_api.exceptions.TeamValidationException
@@ -115,6 +116,12 @@ class ProjectTeamServiceTest {
         every { userRepository.findById("user-1") } returns Optional.of(mockUser)
         every { projectMemberRepository.save(any()) } returns mockk()
         every { coffeeAccountRepository.findById("user-1") } returns Optional.empty()
+        every { userService.entityToUserResponseDto(any(), any()) } returns UserResponseDto(
+            id = "user-1",
+            username = "Developer",
+            firstName = "Test",
+            lastName = "User"
+        )
 
         val result = projectTeamService.assignUserToProject(currentUserId, "proj-1", "user-1", "DEVELOPER")
 

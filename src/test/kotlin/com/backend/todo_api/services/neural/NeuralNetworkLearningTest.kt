@@ -49,7 +49,7 @@ class NeuralNetworkLearningTest {
         )
 
         // 🚀 TRAINING: Wir gehen die festen Beispiele durch
-        repeat(50) {
+        repeat(200) {
             for ((inputs, target) in trainingData) {
                 neuralNetwork.train(inputs, target)
             }

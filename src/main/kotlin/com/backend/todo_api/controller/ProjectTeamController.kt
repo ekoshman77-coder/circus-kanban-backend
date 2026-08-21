@@ -59,13 +59,11 @@ class ProjectTeamController(
         ApiResponse(responseCode = "409", description = "Operation abgelehnt: Benutzer existiert nicht")
     ])
     fun assignUserToProject(
-        @RequestParam projectId: String,
-        @RequestParam role: String,
         @jakarta.validation.Valid @RequestBody request: AssignUserRequestDTO,
         principal: Principal?
     ): ResponseEntity<ProjectMemberDto> {
         val currentUserId = getUserIdFromPrincipal(principal)
-        val assigned = projectTeamService.assignUserToProject(currentUserId, projectId, request.userId, role)
+        val assigned = projectTeamService.assignUserToProject(currentUserId, request.projectId, request.userId, request.projectRole)
         return ResponseEntity.ok(assigned)
     }
 
