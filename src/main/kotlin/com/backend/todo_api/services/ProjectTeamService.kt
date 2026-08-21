@@ -1,9 +1,6 @@
 package com.backend.todo_api.services
 
-import com.backend.todo_api.constants.AppConstants.ADMIN_DEPARTMENT_NAME
 import com.backend.todo_api.data.entity.ProjectMemberEntity
-import com.backend.todo_api.data.entity.RoleEntity
-import com.backend.todo_api.data.entity.UserEntity
 import com.backend.todo_api.data.repository.ProjectRepository
 import com.backend.todo_api.data.repository.UserRepository
 import com.backend.todo_api.data.repository.CoffeeAccountRepository
@@ -15,11 +12,8 @@ import com.backend.todo_api.dto.ProjectMemberDto
 import com.backend.todo_api.exceptions.ActionForbiddenException
 import com.backend.todo_api.exceptions.UserNotFoundException
 import com.backend.todo_api.exceptions.ProjectNotFoundException
-import com.backend.todo_api.exceptions.TeamValidationException
-import com.backend.todo_api.exceptions.UserDeletedException
 import com.backend.todo_api.exceptions.UserDepartmentNotFoundException
 import com.backend.todo_api.model.ActionType
-import com.backend.todo_api.model.ProjectSecurityResource
 import com.backend.todo_api.model.RoleType
 import com.backend.todo_api.model.UserSecurityResource
 import com.backend.todo_api.model.toEntity
@@ -122,13 +116,16 @@ class ProjectTeamService(
         val project = projectRepository.findById(projectId)
             .orElseThrow { ProjectNotFoundException("Projekt mit ID $projectId nicht gefunden!") }
 
+        val user = userRepository.findByIdAndIsArchivedFalse(userId)
+            ?: throw UserNotFoundException("User existiert nicht")
+
         // 🛡️ BERECHTIGUNGSPRÜFUNG: Bearbeitungsrechte (WRITE) auf das Projekt reichen völlig aus!
         val userContexts = userContextResolver.resolveContexts(currentUserId)
         val projectResource = project.toSecurityResource()
 
         val hasAccess = permissionService.hasPermission(
             userContexts = userContexts,
-            action = ActionType.UPDATE, // 👈 Hier WRITE / UPDATE statt DELETE
+            action = ActionType.UPDATE,
             resource = projectResource
         )
 
@@ -137,37 +134,21 @@ class ProjectTeamService(
         }
 
         val existingMembership = projectMemberRepository.findByUserIdAndProjectId(userId, projectId)
-        val finalUser: UserEntity
 
         if (existingMembership != null) {
-            // Wenn er schon im Projekt ist, prüfen wir, ob er heimlich archiviert wurde
-            if (existingMembership.user.isArchived) {
-                throw UserNotFoundException("User existiert nicht")
-            }
-
-            existingMembership.role = RoleEntity()
+            existingMembership.role = role.toEntity(roleRepository)
             projectMemberRepository.save(existingMembership)
-            finalUser = existingMembership.user
         } else {
-            val project = projectRepository.findById(projectId)
-                .orElseThrow { ProjectNotFoundException("Projekt mit ID $projectId nicht gefunden!") }
-            val user = userRepository.findById(userId)
-                .orElseThrow { UserNotFoundException("User mit ID $userId nicht gefunden!") }
-
-            // 🛡️ SICHERHEITS-CHECK: Verhindert, dass archivierte User neuen Projekten hinzugefügt werden
-            if (user.isArchived) {
-                throw UserNotFoundException("User existiert nicht")
-            }
-
             val newMembership = ProjectMemberEntity(project = project, user = user, role = role.toEntity(roleRepository))
-            projectMemberRepository.save(newMembership)
-            finalUser = user
+            val savedMemberShip = projectMemberRepository.save(newMembership)
+            project.teamMemberships.add(savedMemberShip)
+            user.projectMemberships.add(savedMemberShip)
         }
 
-        val coffeeAccount = coffeeAccountRepository.findById(finalUser.id).orElse(null)
+        val coffeeAccount = coffeeAccountRepository.findById(userId).orElse(null)
 
         return ProjectMemberDto(
-            user = userService.entityToUserResponseDto(finalUser, coffeeAccount),
+            user = userService.entityToUserResponseDto(user, coffeeAccount),
             projectRole = role.name
         )
     }
