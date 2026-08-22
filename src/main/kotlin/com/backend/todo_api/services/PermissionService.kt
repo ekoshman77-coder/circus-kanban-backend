@@ -91,12 +91,4 @@ class PermissionService(
                     .maxOf { it.targetScope.hierarchyLevel } // Hier reicht maxOf(), da der Filter nie leer ist!
             }
     }
-
-    fun getMasterData(): MasterDataResponseDto {
-        return MasterDataResponseDto (
-            departmentScopes = ScopeType.values().filter { it.isDepartmentSelectable }.map { it.name },
-            projectRoles = RoleType.entries.filter { it.isProjectRole }.map { it.name },
-            departmentRoles = RoleType.entries.filter { it.isDepartmentRole }.map { it.name }
-        )
-    }
 }

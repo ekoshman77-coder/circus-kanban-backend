@@ -20,4 +20,11 @@ interface RolePermissionRepository : JpaRepository<RolePermissionEntity, String>
 
     fun findByActionNameAndResourceName(actionName: ActionType, resourceName: ResourceType): List<RolePermissionEntity>
     fun existsByResource(resource: ResourceEntity): Boolean
+
+    // In RolePermissionRepository.kt
+    fun existsByRoleNameAndResourceNameAndActionName(
+        role: RoleType,
+        resource: ResourceType,
+        action: ActionType
+    ): Boolean
 }

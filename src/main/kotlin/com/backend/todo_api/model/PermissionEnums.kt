@@ -15,7 +15,8 @@ enum class ResourceType {
     TODO,
     PROJECT,
     USER,
-    DEPARTMENT
+    DEPARTMENT,
+    PERMISSION
 }
 
 fun ResourceType.toEntity(resourceRepository: ResourceRepository): ResourceEntity {

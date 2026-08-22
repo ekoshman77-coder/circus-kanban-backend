@@ -2,6 +2,7 @@ package com.backend.todo_api.controller
 
 import com.backend.todo_api.dto.MasterDataResponseDto
 import com.backend.todo_api.services.PermissionService
+import com.backend.todo_api.services.RolePermissionAdminService
 import io.swagger.v3.oas.annotations.Operation
 import io.swagger.v3.oas.annotations.tags.Tag
 import org.springframework.http.ResponseEntity
@@ -15,7 +16,7 @@ import org.springframework.web.bind.annotation.RestController
 @CrossOrigin(origins = ["http://localhost:4200"])
 @Tag(name = "MasterData-Controller", description = "Liefert Konfigurationsdaten und Enums für Frontend-Dropdowns")
 class MasterDataController(
-    private val permissionService: PermissionService
+    private val permissionService: RolePermissionAdminService
 ) {
 
     @GetMapping
