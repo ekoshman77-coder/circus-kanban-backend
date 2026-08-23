@@ -1,5 +1,8 @@
 package com.backend.todo_api.services
 
+import com.backend.todo_api.data.entity.CoffeeAccountEntity
+import com.backend.todo_api.data.entity.RoleEntity
+import com.backend.todo_api.data.entity.ScopeEntity
 import com.backend.todo_api.data.entity.UserEntity
 import com.backend.todo_api.data.repository.*
 import com.backend.todo_api.dto.DepartmentDto
@@ -9,12 +12,14 @@ import com.backend.todo_api.exceptions.ActionForbiddenException
 import com.backend.todo_api.exceptions.UserNotFoundException
 import com.backend.todo_api.model.ActionType
 import com.backend.todo_api.model.RoleType
+import com.backend.todo_api.model.ScopeType
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.verify
 import org.junit.jupiter.api.Assertions.*
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
+import org.junit.jupiter.api.assertThrows
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder
 import java.util.Optional
 
@@ -168,4 +173,57 @@ class UserServiceTest {
 
         assertEquals("Anna", result.firstName)
     }
+
+    @Test
+    fun `getApprovedUsers - sammelt User aus DEPARTMENT und PROJECT Contexten`() {
+        // GIVEN
+        val currentUserId = "user-123"
+        val requestingUser = UserEntity(id = currentUserId, departmentId = "dept-1")
+
+        val roleAdmin = RoleEntity(name = RoleType.ADMIN_HEAD)
+        val scopeDept = ScopeEntity(name = ScopeType.DEPARTMENT)
+        val scopeProj = ScopeEntity(name = ScopeType.PROJECT)
+
+        val deptContext = UserContext(scope = scopeDept, scopeInstanceId = "dept-1", role = roleAdmin)
+        val projContext = UserContext(scope = scopeProj, scopeInstanceId = "proj-1", role = roleAdmin)
+
+        every { userRepository.findById(currentUserId) } returns Optional.of(requestingUser)
+        every { userContextResolver.resolveContexts(currentUserId) } returns listOf(deptContext, projContext)
+        every { permissionService.hasPermission(any(), ActionType.READ, any()) } returns true
+
+        val deptUser = UserEntity(id = "user-dept", firstName = "Dept", lastName = "User", departmentId = "dept-1", isApproved = true)
+        val projUser = UserEntity(id = "user-proj", firstName = "Proj", lastName = "User", departmentId = "dept-2", isApproved = true)
+
+        // 🎯 FIX: UserService ruft direkt findByIsApprovedAndIsArchivedFalse(true) auf!
+        every { userRepository.findByIsApprovedAndIsArchivedFalse(true) } returns listOf(deptUser, projUser)
+        every { coffeeAccountRepository.findById(any()) } returns Optional.of(CoffeeAccountEntity(userId = "dummy"))
+        every { departmentService.getDepartmentDtoById(any()) } returns null
+
+        // WHEN
+        val result = userService.getApprovedUsers(currentUserId)
+
+        // THEN
+        assertEquals(2, result.size)
+        assertTrue(result.any { it.id == "user-dept" })
+        assertTrue(result.any { it.id == "user-proj" })
+
+        verify(exactly = 1) { userRepository.findByIsApprovedAndIsArchivedFalse(true) }
+    }
+
+    @Test
+    fun `getUnapprovedUsers - wirft ActionForbiddenException wenn Berechtigung fehlt`() {
+        // GIVEN
+        val currentUserId = "user-no-rights"
+
+        every { userContextResolver.resolveContexts(currentUserId) } returns emptyList()
+        every { permissionService.hasPermission(any(), ActionType.READ, any()) } returns false
+
+        // WHEN & THEN
+        assertThrows<ActionForbiddenException> {
+            userService.getUnapprovedUsers(currentUserId)
+        }
+
+        verify(exactly = 0) { userRepository.findByIsApprovedAndIsArchivedFalse(false) }
+    }
+
 }

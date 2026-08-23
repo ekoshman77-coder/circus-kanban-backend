@@ -57,15 +57,14 @@ class ProjectTeamServicePermissionsTest {
         every { userContextResolver.resolveContexts(currentUserId) } returns emptyList()
         every { permissionService.hasPermission(any(), ActionType.UPDATE, any()) } returns true
 
-        // 2. Repositories
+        // 2. Repositories & Extension Mocks
         every { projectRepository.findById(projectId) } returns Optional.of(project)
+        every { userRepository.findByIdAndIsArchivedFalse(targetUserId) } returns targetUser
+        every { roleRepository.findByName(RoleType.DEVELOPER) } returns RoleEntity(name = RoleType.DEVELOPER)
         every { projectMemberRepository.findByUserIdAndProjectId(targetUserId, projectId) } returns null
-        every { userRepository.findById(targetUserId) } returns Optional.of(targetUser)
-
-        // MockK Fix: Verhindert ClassCastException beim Speichern
         every { projectMemberRepository.save(any()) } answers { firstArg() }
 
-        // Am Ende der Methode wird das Kaffeekonto geladen
+        // CoffeeAccount & DTO Mapping
         every { coffeeAccountRepository.findById(targetUserId) } returns Optional.empty()
         every { userService.entityToUserResponseDto(any(), any()) } returns UserResponseDto(
             id = targetUserId,
@@ -73,12 +72,13 @@ class ProjectTeamServicePermissionsTest {
             firstName = "Test",
             lastName = "User"
         )
+
         assertDoesNotThrow {
             projectTeamService.assignUserToProject(
                 currentUserId = currentUserId,
                 projectId = projectId,
                 userId = targetUserId,
-                role = RoleType.DEVELOPER.toString()
+                role = RoleType.DEVELOPER
             )
         }
 
@@ -88,8 +88,10 @@ class ProjectTeamServicePermissionsTest {
     @Test
     fun `assignUserToProject sollte ActionForbiddenException werfen wenn Rechte fehlen`() {
         val project = ProjectEntity(id = projectId)
+        val targetUser = UserEntity(id = targetUserId, isArchived = false)
 
         every { projectRepository.findById(projectId) } returns Optional.of(project)
+        every { userRepository.findByIdAndIsArchivedFalse(targetUserId) } returns targetUser
         every { userContextResolver.resolveContexts(currentUserId) } returns emptyList()
         every { permissionService.hasPermission(any(), ActionType.UPDATE, any()) } returns false
 
@@ -98,7 +100,7 @@ class ProjectTeamServicePermissionsTest {
                 currentUserId = currentUserId,
                 projectId = projectId,
                 userId = targetUserId,
-                role = RoleType.DEVELOPER.toString()
+                role = RoleType.DEVELOPER
             )
         }
     }

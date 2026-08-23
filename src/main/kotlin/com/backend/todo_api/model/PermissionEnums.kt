@@ -69,9 +69,11 @@ enum class RoleType(
     MEMBER(isProjectRole = false, isDepartmentRole = true, "Standard-Abteilungsmitglied"),
 
     // 📂 Projekt- & Teamrollen
-    OWNER(isProjectRole = true, isDepartmentRole = false, "Projekteigentümer"),
     PROJECT_MANAGER(isProjectRole = true, isDepartmentRole = false, "Projektleiter"),
-    DEVELOPER(isProjectRole = true, isDepartmentRole = false, "Entwickler / Teammitglied")
+    DEVELOPER(isProjectRole = true, isDepartmentRole = false, "Entwickler / Teammitglied"),
+
+    // resource erstellen rollle
+    OWNER(isProjectRole = false, isDepartmentRole = false, "resource erstellen rolle"),
 }
 
 // Erlaubt den Aufruf: RoleType.ADMIN.toEntity(roleRepository)

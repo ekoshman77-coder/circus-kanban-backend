@@ -22,6 +22,7 @@ import org.springframework.stereotype.Service
 import org.springframework.web.server.ResponseStatusException
 import java.security.Principal
 import com.backend.todo_api.exceptions.UserDeletedException
+import com.backend.todo_api.model.NoteSecurityResource
 import com.backend.todo_api.model.toSecurityResource
 
 @Service
@@ -79,29 +80,57 @@ class NoteService(
     // Holt nur die relevanten aktiven Notizen für den User
     fun getNotesByUserId(userId: String): List<NoteDto> {
         val userContexts = userContextResolver.resolveContexts(userId)
+        val resultNotes = mutableSetOf<NoteEntity>()
 
-        val maxContext = permissionService.getMaxAllowedUserContext(
-            userContexts = userContexts,
-            resource = ResourceType.NOTE,
-            action = ActionType.READ
-        ) ?: return emptyList()
+        for (context in userContexts) {
+            val dummyResource = NoteSecurityResource(
+                ownerUserId = userId,
+                departmentId = if (context.scope.name == ScopeType.DEPARTMENT) context.scopeInstanceId else null,
+                projectId = if (context.scope.name == ScopeType.PROJECT) context.scopeInstanceId else null
+            )
 
-        val notes = when (maxContext.scope.name) {
-            ScopeType.COMPANY -> {
-                noteRepository.findByIsArchivedFalse()
+            val hasAccess = permissionService.hasPermission(
+                userContexts = listOf(context),
+                action = ActionType.READ,
+                resource = dummyResource
+            )
+
+            if (hasAccess) {
+                when (context.scope.name) {
+                    // 1. COMPANY (Admin): Sieht alle Notizen
+                    ScopeType.COMPANY -> {
+                        resultNotes.addAll(noteRepository.findByIsArchivedFalse())
+                    }
+
+                    // 2. DEPARTMENT: Notizen der eigenen Abteilung
+                    ScopeType.DEPARTMENT -> {
+                        context.scopeInstanceId?.let { deptId ->
+                            resultNotes.addAll(
+                                noteRepository.findByDepartmentIdAndIsArchivedFalse(deptId)
+                            )
+                        }
+                    }
+
+                    // 3. PROJECT: Die Zettel/Ideen der Projekte, in denen der User Mitglied ist! 🎯
+                    ScopeType.PROJECT -> {
+                        context.scopeInstanceId?.let { projectId ->
+                            resultNotes.addAll(
+                                noteRepository.findNotesByProjectId(projectId)
+                            )
+                        }
+                    }
+
+                    // 4. RESOURCE: Eigene persönliche Notizen des Benutzers
+                    ScopeType.RESOURCE -> {
+                        resultNotes.addAll(
+                            noteRepository.findByUserIdAndIsArchivedFalse(userId)
+                        )
+                    }
+                }
             }
-            ScopeType.DEPARTMENT -> {
-                val deptId = maxContext.scopeInstanceId
-                    ?: throw IllegalStateException("Abteilungs-ID fehlt im Kontext!")
-                noteRepository.findByDepartmentIdAndIsArchivedFalse(deptId)
-            }
-            ScopeType.RESOURCE -> {
-                noteRepository.findByUserIdAndIsArchivedFalse(userId)
-            }
-            else -> emptyList()
         }
 
-        return notes.map { it.toDto() }
+        return resultNotes.map { it.toDto() }
     }
 
     // 3. Zettel editieren (Sicherheitshalber prüfen wir hier auch die userId!)

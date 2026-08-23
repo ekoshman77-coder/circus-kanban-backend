@@ -58,6 +58,28 @@ object TodoSpecifications {
     }
 
     /**
+     * 📁 Projekt-Scope (PROJECT)
+     * Ein User mit Projekt-Scope sieht alle Projekt-Todos,
+     * die zu diesem spezifischen Projekt gehören (über MilestoneEntity -> Project.id).
+     */
+    fun isProjectScope(projectId: String): Specification<TodoEntity> {
+        return Specification { root, query, builder ->
+            // Subquery auf Meilensteine des Projekts
+            val subquery = query.subquery(String::class.java)
+            val milestoneRoot = subquery.from(com.backend.todo_api.data.entity.MilestoneEntity::class.java)
+
+            val projectJoin = milestoneRoot.join<Any, Any>("project")
+
+            // SELECT m.id FROM MilestoneEntity m JOIN m.project p WHERE p.id = :projectId
+            subquery.select(milestoneRoot.get("id"))
+                .where(builder.equal(projectJoin.get<String>("id"), projectId))
+
+            // WHERE todo.milestoneId IN (subquery)
+            root.get<String>("milestoneId").`in`(subquery)
+        }
+    }
+
+    /**
      * 👤 Ressourcen- / Privater Scope (RESOURCE)
      */
     fun isPrivateResourceScope(userId: String): Specification<TodoEntity> {

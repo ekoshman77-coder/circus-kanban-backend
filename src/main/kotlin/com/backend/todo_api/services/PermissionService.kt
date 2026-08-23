@@ -60,35 +60,4 @@ class PermissionService(
 
         return false
     }
-
-    /**
-     * Aufgabe B: Die Filter-Brille für Listen-Abfragen (Höchsten Scope ermitteln)
-     */
-    @Transactional(readOnly = true)
-    fun getMaxAllowedUserContext(
-        userContexts: List<UserContext>,
-        action: ActionType,
-        resource: ResourceType
-    ): UserContext? {
-        if (userContexts.isEmpty()) return null
-
-        val roleNames = userContexts.map { it.role.name }
-
-        val permissions = rolePermissionRepository.findByRoleNameInAndActionNameAndResourceName(
-            roleNames,
-            action,
-            resource
-        )
-
-        // Findet den UserContext, der laut Matrix das höchste TargetScope-Level besitzt
-        return userContexts
-            // 1. Nur die Kontexte behalten, für die es in 'permissions' auch WIRKLICH Regeln gibt
-            .filter { context -> permissions.any { it.role.name == context.role.name } }
-            // 2. Jetzt aus diesen gültigen Kontexten denjenigen mit dem höchsten hierarchyLevel ziehen
-            .maxByOrNull { context ->
-                permissions
-                    .filter { it.role.name == context.role.name }
-                    .maxOf { it.targetScope.hierarchyLevel } // Hier reicht maxOf(), da der Filter nie leer ist!
-            }
-    }
 }

@@ -50,6 +50,7 @@ class RolePermissionAdminService(
             allScopes = ScopeType.entries.map { it.name },
             departmentRoles = RoleType.entries.filter { it.isDepartmentRole }.map { it.name },
             projectRoles = RoleType.entries.filter { it.isProjectRole }.map { it.name },
+            otherRoles = RoleType.entries.filter { !it.isDepartmentRole && !it.isProjectRole }.map { it.name },
             resources = ResourceType.entries.map { it.name },
             actions = ActionType.entries.map { it.name }
         )
@@ -84,15 +85,13 @@ class RolePermissionAdminService(
         val roleType = RoleType.valueOf(dto.role)
         val resourceType = ResourceType.valueOf(dto.resource)
         val actionType = ActionType.valueOf(dto.action)
+        val targetScope = ScopeType.valueOf((dto.targetScope))
 
-        // 🛑 1. Eindeutigkeits-Check!
-        if (rolePermissionRepository.existsByRoleNameAndResourceNameAndActionName(roleType, resourceType, actionType)) {
+        if (rolePermissionRepository.existsByRoleNameAndResourceNameAndActionNameAndTargetScopeName(roleType, resourceType, actionType, targetScope)) {
             throw PermissionAlreadyExistsException(
-                "Eine Regel für die Kombination '$roleType' + '$resourceType' + '$actionType' existiert bereits!"
+                "Eine Regel für '$roleType' + '$resourceType' + '$actionType' im Scope '$targetScope' existiert bereits!"
             )
         }
-
-        // 2. Anlegen & Speichern
         val newEntity = dto.toEntity(
             roleRepository,
             resourceRepository,
@@ -102,7 +101,6 @@ class RolePermissionAdminService(
         return rolePermissionRepository.save(newEntity).toDto()
     }
 
-    /** 5. Eine Berechtigung löschen */
     @Transactional
     fun deletePermission(id: String) {
         if (!rolePermissionRepository.existsById(id)) {

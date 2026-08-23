@@ -97,16 +97,18 @@ class PermissionInitializer(
         actionType: ActionType,
         scopeType: ScopeType
     ) {
-        val role = roleRepository.findByName(roleType)!!
-        val resource = resourceRepository.findByName(resourceType)!!
-        val action = actionRepository.findByName(actionType)!!
-        val scope = scopeRepository.findByName(scopeType)!!
-
-        val exists = rolePermissionRepository.existsByRoleNameAndResourceNameAndActionName(
-            roleType, resourceType, actionType
+        // 1. Erst direkt mit den Enums prüfen
+        val exists = rolePermissionRepository.existsByRoleNameAndResourceNameAndActionNameAndTargetScopeName(
+            roleType, resourceType, actionType, scopeType
         )
 
+        // 2. Nur wenn es fehlt, laden wir die Entities und speichern
         if (!exists) {
+            val role = roleRepository.findByName(roleType)!!
+            val resource = resourceRepository.findByName(resourceType)!!
+            val action = actionRepository.findByName(actionType)!!
+            val scope = scopeRepository.findByName(scopeType)!!
+
             rolePermissionRepository.save(
                 RolePermissionEntity(
                     role = role,
@@ -135,27 +137,32 @@ class PermissionInitializer(
             savePermissionIfNotExists(RoleType.DEPARTMENT_HEAD, ResourceType.NOTE, action, ScopeType.DEPARTMENT)
         }
 
+        savePermissionIfNotExists(RoleType.DEVELOPER, ResourceType.NOTE, ActionType.READ, ScopeType.PROJECT)
+
         // ADMIN & ADMIN_HEAD: READ in Company
         savePermissionIfNotExists(RoleType.ADMIN, ResourceType.NOTE, ActionType.READ, ScopeType.COMPANY)
         savePermissionIfNotExists(RoleType.ADMIN_HEAD, ResourceType.NOTE, ActionType.READ, ScopeType.COMPANY)
     }
 
     private fun initProjectPermissions() {
-        val projectResource = resourceRepository.findByName(ResourceType.PROJECT)!!
-        if (rolePermissionRepository.existsByResource(projectResource)) return
 
-        // MEMBER & DEVELOPER: READ, CREATE in Department
+        // MEMBER: READ, CREATE in Department
         listOf(ActionType.READ, ActionType.CREATE).forEach { action ->
             savePermissionIfNotExists(RoleType.MEMBER, ResourceType.PROJECT, action, ScopeType.DEPARTMENT)
+        }
+
+        // 🎯 DEVELOPER: Kann Projekte in der Abteilung anlegen/sehen UND das eigene Projekt lesen ({DEVELOPER, PROJECT, READ, PROJECT})
+        listOf(ActionType.READ, ActionType.CREATE).forEach { action ->
             savePermissionIfNotExists(RoleType.DEVELOPER, ResourceType.PROJECT, action, ScopeType.DEPARTMENT)
         }
+        savePermissionIfNotExists(RoleType.DEVELOPER, ResourceType.PROJECT, ActionType.READ, ScopeType.PROJECT)
 
         // PROJECT_MANAGER: Full Access in Project
         listOf(ActionType.READ, ActionType.CREATE, ActionType.UPDATE, ActionType.DELETE).forEach { action ->
             savePermissionIfNotExists(RoleType.PROJECT_MANAGER, ResourceType.PROJECT, action, ScopeType.PROJECT)
         }
 
-        // ADMIN & ADMIN_HEAD: Full Access in Company
+        // ADMIN & ADMIN_HEAD: Full Access in Company für Projekt-Stammdaten
         listOf(ActionType.READ, ActionType.CREATE, ActionType.UPDATE, ActionType.DELETE).forEach { action ->
             savePermissionIfNotExists(RoleType.ADMIN, ResourceType.PROJECT, action, ScopeType.COMPANY)
             savePermissionIfNotExists(RoleType.ADMIN_HEAD, ResourceType.PROJECT, action, ScopeType.COMPANY)
@@ -166,39 +173,36 @@ class PermissionInitializer(
         val todoResource = resourceRepository.findByName(ResourceType.TODO)!!
         if (rolePermissionRepository.existsByResource(todoResource)) return
 
-        // OWNER: Full Access auf Resource
+        // 1. OWNER: Voller Zugriff nur auf die eigenen, privaten Todos (RESOURCE-Scope)
         listOf(ActionType.READ, ActionType.CREATE, ActionType.UPDATE, ActionType.DELETE).forEach { action ->
             savePermissionIfNotExists(RoleType.OWNER, ResourceType.TODO, action, ScopeType.RESOURCE)
         }
 
-        // MEMBER & DEVELOPER: READ, CREATE, UPDATE in Project
+        // 2. DEVELOPER & MEMBER: Projekt-Todos lesen, erstellen & bearbeiten (PROJECT-Scope)
         listOf(ActionType.READ, ActionType.CREATE, ActionType.UPDATE).forEach { action ->
             savePermissionIfNotExists(RoleType.MEMBER, ResourceType.TODO, action, ScopeType.PROJECT)
             savePermissionIfNotExists(RoleType.DEVELOPER, ResourceType.TODO, action, ScopeType.PROJECT)
         }
 
-        // PROJECT_MANAGER: Full Access in Project
+        // 3. PROJECT_MANAGER: Voller Zugriff auf Projekt-Todos inkl. Löschen (PROJECT-Scope)
         listOf(ActionType.READ, ActionType.CREATE, ActionType.UPDATE, ActionType.DELETE).forEach { action ->
             savePermissionIfNotExists(RoleType.PROJECT_MANAGER, ResourceType.TODO, action, ScopeType.PROJECT)
         }
     }
 
     private fun initUserPermissions() {
-        val userResource = resourceRepository.findByName(ResourceType.USER)!!
-        if (rolePermissionRepository.existsByResource(userResource)) return
-
-        // OWNER: READ, UPDATE, DELETE auf Resource
+        // OWNER: READ, UPDATE, DELETE auf die eigene User-Ressource
         listOf(ActionType.READ, ActionType.UPDATE, ActionType.DELETE).forEach { action ->
             savePermissionIfNotExists(RoleType.OWNER, ResourceType.USER, action, ScopeType.RESOURCE)
         }
 
-        // MEMBER & DEPT_HEAD: READ in Department & Project
-        listOf(RoleType.MEMBER, RoleType.DEPARTMENT_HEAD).forEach { role ->
+        // MEMBER, DEPT_HEAD UND DEVELOPER: Dürfen alle Kollegen in der eigenen Abteilung lesen!
+        listOf(RoleType.MEMBER, RoleType.DEPARTMENT_HEAD, RoleType.DEVELOPER).forEach { role ->
             savePermissionIfNotExists(role, ResourceType.USER, ActionType.READ, ScopeType.DEPARTMENT)
-            savePermissionIfNotExists(role, ResourceType.USER, ActionType.READ, ScopeType.PROJECT)
         }
 
-        // PROJECT_MANAGER: READ in Project
+        // DEVELOPER & PROJECT_MANAGER: READ in Project (auch für abteilungsfremde Kollegen!)
+        savePermissionIfNotExists(RoleType.DEVELOPER, ResourceType.USER, ActionType.READ, ScopeType.PROJECT)
         savePermissionIfNotExists(RoleType.PROJECT_MANAGER, ResourceType.USER, ActionType.READ, ScopeType.PROJECT)
 
         // ADMIN_HEAD: Full Access + INVITE in Company
