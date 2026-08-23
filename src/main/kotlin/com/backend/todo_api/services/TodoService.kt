@@ -149,6 +149,11 @@ class TodoService (
                 ScopeType.DEPARTMENT ->
                     context.scopeInstanceId?.let { TodoSpecifications.isDepartmentScope(it) }
 
+                ScopeType.PROJECT ->
+                    context.scopeInstanceId?.let { projectId ->
+                        TodoSpecifications.isProjectScope(projectId)
+                    }
+
                 ScopeType.RESOURCE ->
                     TodoSpecifications.isPrivateResourceScope(userId)
 

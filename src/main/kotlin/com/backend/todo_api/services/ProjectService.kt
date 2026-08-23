@@ -28,42 +28,42 @@ class ProjectService(
     fun getProjectsByWithUser(userId: String?): List<ProjectDto> {
         if (userId.isNullOrBlank()) return emptyList()
 
-        // 1. Alle Kontexte des Benutzers auflösen (RESOURCE, DEPARTMENT/COMPANY, PROJECT)
+        // 1. Alle Kontexte des Benutzers laden (DEPARTMENT, PROJECT, COMPANY etc.)
         val userContexts = userContextResolver.resolveContexts(userId)
 
-        // 2. Maximalen zugelassenen Kontext für READ auf PROJECT ermitteln
-        val maxContext = permissionService.getMaxAllowedUserContext(
-            userContexts = userContexts,
-            action = ActionType.READ,
-            resource = ResourceType.PROJECT
-        ) ?: return emptyList() // Keine Berechtigung -> Leere Liste
+        // Set verhindert doppelte Einträge (z.B. wenn ein Projekt in der Abteilung liegt UND eine direkte Mitgliedschaft existiert)
+        val resultProjects = mutableSetOf<ProjectEntity>()
 
-        // 3. Entsprechend des ermittelten Max-Contexts dynamisch aus der DB laden:
-        return when (maxContext.scope.name) {
-            // ADMIN / COMPANY-Scope: maxContext.scopeInstanceId ist null -> Alle Projekte
-            ScopeType.COMPANY -> {
-                projectRepository.findByStatusNot("Zip")
-                    .map { it.toDto() }
+        // 2. Durch ALLE Kontexte des Users iterieren
+        for (context in userContexts) {
+            when (context.scope.name) {
+                // Unternehmensweiter Zugriff (Admin) -> Sofort alle aktiven Projekte laden
+                ScopeType.COMPANY -> {
+                    return projectRepository.findByStatusNot("Zip")
+                        .map { it.toDto() }
+                }
+
+                // Abteilungs-Zugriff -> Alle Projekte der jeweiligen Abteilung sammeln
+                ScopeType.DEPARTMENT -> {
+                    context.scopeInstanceId?.let { deptId ->
+                        resultProjects.addAll(
+                            projectRepository.findByDepartmentIdAndStatusNot(deptId, "Zip")
+                        )
+                    }
+                }
+
+                // Projekt- & Resource-Zugriff -> Alle Projekte laden, in denen der User persönlich als Mitglied steht
+                ScopeType.PROJECT, ScopeType.RESOURCE -> {
+                    resultProjects.addAll(
+                        projectRepository.findProjectsByMemberUserIdAndStatusNot(userId, "Zip")
+                    )
+                }
+
+                else -> {}
             }
-
-            // MEMBER / DEPARTMENT-Scope: Nur Projekte der eigenen Abteilung
-            ScopeType.DEPARTMENT -> {
-                val deptId = maxContext.scopeInstanceId
-                    ?: return emptyList()
-
-                projectRepository.findByDepartmentIdAndStatusNot(deptId, "Zip")
-                    .map { it.toDto() }
-            }
-
-            // PROJECT_MANAGER / PROJECT-Scope oder RESOURCE-Scope:
-            // Nur Projekte, in denen der User als Projektmitglied eingetragen ist
-            ScopeType.PROJECT, ScopeType.RESOURCE -> {
-                projectRepository.findProjectsByMemberUserIdAndStatusNot(userId, "Zip")
-                    .map { it.toDto() }
-            }
-
-            else -> emptyList()
         }
+
+        return resultProjects.map { it.toDto() }
     }
 
     fun getProjectById(userId: String, id: String): ProjectDto {

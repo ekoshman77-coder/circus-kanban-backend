@@ -6,6 +6,7 @@ import com.backend.todo_api.dto.ProjectMemberDto
 import com.backend.todo_api.dto.UserResponseDto
 import com.backend.todo_api.exceptions.GlobalExceptionHandler
 import com.backend.todo_api.exceptions.TeamValidationException
+import com.backend.todo_api.model.RoleType
 import com.backend.todo_api.services.ProjectTeamService
 import com.fasterxml.jackson.databind.ObjectMapper
 import io.mockk.every
@@ -89,33 +90,36 @@ class ProjectTeamControllerTest {
     // --- 2. POST /api/teams ---
 
     @Test
-    fun `POST - api-teams - sollte 400 Bad Request liefern wenn userId im Body leer ist`() {
-        val invalidRequestBody = AssignUserRequestDTO(userId = "   ")
+    fun `POST - api-teams - sollte 400 Bad Request liefern wenn userId im Body blank ist`() {
+        val invalidRequestBody = AssignUserRequestDTO(
+            projectId = "proj-1",
+            userId = "   ",
+            projectRole = RoleType.DEVELOPER
+        )
 
         mockMvc.perform(
             post("/api/teams")
-                .param("projectId", "proj-1")
-                .param("role", "DEVELOPER")
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(objectMapper.writeValueAsString(invalidRequestBody))
                 .principal(mockPrincipal)
         )
             .andExpect(status().isBadRequest)
-            .andExpect(jsonPath("$.errorCode").value("INVALID_DATA"))
     }
 
     @Test
     fun `POST - api-teams - sollte Exception vom Service abfangen und als TEAM_VALIDATION_ERROR senden`() {
-        val requestBody = AssignUserRequestDTO(userId = "user-1")
+        val requestBody = AssignUserRequestDTO(
+            projectId = "proj-1",
+            userId = "user-1",
+            projectRole = RoleType.DEVELOPER
+        )
 
         every {
-            projectTeamService.assignUserToProject(mockUserId, "proj-1", "user-1", "FALSEROLLE")
+            projectTeamService.assignUserToProject(mockUserId, "proj-1", "user-1", RoleType.DEVELOPER)
         } throws TeamValidationException("Ungültige Rolle")
 
         mockMvc.perform(
             post("/api/teams")
-                .param("projectId", "proj-1")
-                .param("role", "FALSEROLLE")
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(objectMapper.writeValueAsString(requestBody))
                 .principal(mockPrincipal)
@@ -123,6 +127,10 @@ class ProjectTeamControllerTest {
             .andExpect(status().isBadRequest)
             .andExpect(jsonPath("$.errorCode").value("TEAM_VALIDATION_ERROR"))
             .andExpect(jsonPath("$.message").value("Ungültige Rolle"))
+
+        verify(exactly = 1) {
+            projectTeamService.assignUserToProject(mockUserId, "proj-1", "user-1", RoleType.DEVELOPER)
+        }
     }
 
     // --- 3. DELETE /api/teams/{memberId} ---

@@ -47,39 +47,44 @@ class DepartmentServiceTest {
     // --- 1. GET ALL DEPARTMENTS ---
 
     @Test
-    fun `getAllDepartments sollte alle Abteilungen zurueckgeben wenn MaxAllowedUserContext existiert`() {
+    fun `getAllDepartments sollte alle Abteilungen zurueckgeben wenn COMPANY Scope und Berechtigung vorliegt`() {
+        // GIVEN
+        val companyScope = ScopeEntity(name = ScopeType.COMPANY)
+        val companyContext = UserContext(scope = companyScope, scopeInstanceId = null, role = mockk())
+
         val dept1 = DepartmentEntity(id = "1", name = "HR")
         val dept2 = DepartmentEntity(id = "2", name = "IT")
 
-        every { userContextResolver.resolveContexts(userId) } returns emptyList()
-        // NEU: Mocken des globalen Berechtigungs-Checks
-        every {
-            permissionService.getMaxAllowedUserContext(any(), ActionType.READ, ResourceType.DEPARTMENT)
-        } returns mockk() // Irgendein Kontext wird zurückgegeben
-
+        every { userContextResolver.resolveContexts(userId) } returns listOf(companyContext)
+        every { permissionService.hasPermission(listOf(companyContext), ActionType.READ, any()) } returns true
         every { departmentRepository.findAll() } returns listOf(dept1, dept2)
 
+        // WHEN
         val result = departmentService.getAllDepartments(userId)
 
+        // THEN
         assertEquals(2, result.size)
-        assertEquals("HR", result[0].name)
-        assertEquals("IT", result[1].name)
+        assertTrue(result.any { it.name == "HR" })
+        assertTrue(result.any { it.name == "IT" })
+        verify(exactly = 1) { departmentRepository.findAll() }
     }
 
     @Test
     fun `getAllDepartments sollte leere Liste zurueckgeben wenn kein READ-Recht vorhanden ist`() {
-        every { userContextResolver.resolveContexts(userId) } returns emptyList()
-        // NEU: Mocken, dass kein Kontext gefunden wird
-        every {
-            permissionService.getMaxAllowedUserContext(any(), ActionType.READ, ResourceType.DEPARTMENT)
-        } returns null
+        // GIVEN
+        val companyScope = ScopeEntity(name = ScopeType.COMPANY)
+        val companyContext = UserContext(scope = companyScope, scopeInstanceId = null, role = mockk())
 
+        every { userContextResolver.resolveContexts(userId) } returns listOf(companyContext)
+        every { permissionService.hasPermission(listOf(companyContext), ActionType.READ, any()) } returns false
+
+        // WHEN
         val result = departmentService.getAllDepartments(userId)
 
+        // THEN
         assertTrue(result.isEmpty())
+        verify(exactly = 0) { departmentRepository.findAll() }
     }
-
-    // --- 2. CREATE DEPARTMENT ---
 
     @Test
     fun `createDepartment sollte Abteilung speichern wenn Rechte vorhanden sind`() {

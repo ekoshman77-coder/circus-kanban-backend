@@ -107,4 +107,6 @@ interface UserRepository : JpaRepository<UserEntity, String> {
         @Param("departmentIds") departmentIds: List<String>,
         @Param("rolesFilter") rolesFilter: List<RoleType>
     ): List<UserEntity>
+
+    fun findByIsApprovedTrueAndIsArchivedFalse(): List<UserEntity>
 }

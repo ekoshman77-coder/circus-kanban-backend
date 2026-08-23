@@ -1,6 +1,7 @@
 package com.backend.todo_api.services
 
 import com.backend.todo_api.data.entity.ProjectMemberEntity
+import com.backend.todo_api.data.entity.UserEntity
 import com.backend.todo_api.data.repository.ProjectRepository
 import com.backend.todo_api.data.repository.UserRepository
 import com.backend.todo_api.data.repository.CoffeeAccountRepository
@@ -15,6 +16,7 @@ import com.backend.todo_api.exceptions.ProjectNotFoundException
 import com.backend.todo_api.exceptions.UserDepartmentNotFoundException
 import com.backend.todo_api.model.ActionType
 import com.backend.todo_api.model.RoleType
+import com.backend.todo_api.model.ScopeType
 import com.backend.todo_api.model.UserSecurityResource
 import com.backend.todo_api.model.toEntity
 import com.backend.todo_api.model.toSecurityResource
@@ -74,33 +76,66 @@ class ProjectTeamService(
         val requestingUser = userRepository.findById(currentUserId)
             .orElseThrow { UserNotFoundException("User mit ID $currentUserId nicht gefunden!") }
 
-        val userDeptId = requestingUser.departmentId
-        if (userDeptId.isNullOrBlank()) {
-            return emptyList()
-        }
-
-        departmentRepository.findById(userDeptId)
-            .orElseThrow { UserDepartmentNotFoundException("Benutzerabteilung ist veraltet") }
-
-        // 🛡️ BERECHTIGUNGSPRÜFUNG: Darf der User die Benutzer-Ressource in seiner Abteilung lesen?
         val userContexts = userContextResolver.resolveContexts(currentUserId)
-        val userResource = UserSecurityResource(targetUserId = currentUserId, departmentId = userDeptId)
+        val resultUsers = mutableSetOf<UserEntity>()
 
-        val hasAccess = permissionService.hasPermission(
-            userContexts = userContexts,
-            action = ActionType.READ,
-            resource = userResource
-        )
+        for (context in userContexts) {
+            // 🎯 Wir bauen die Resource dynamisch passend zum aktuellen Scope auf:
+            val resourceToCheck = when (context.scope.name) {
+                ScopeType.DEPARTMENT -> UserSecurityResource(
+                    targetUserId = currentUserId,
+                    departmentId = context.scopeInstanceId ?: requestingUser.departmentId
+                )
+                ScopeType.PROJECT -> UserSecurityResource(
+                    targetUserId = currentUserId,
+                    projectId = context.scopeInstanceId // 👈 WICHTIG: Das fehlte bisher!
+                )
+                else -> UserSecurityResource(
+                    targetUserId = currentUserId,
+                    departmentId = requestingUser.departmentId
+                )
+            }
 
-        if (!hasAccess) {
-            throw ActionForbiddenException("Keine Berechtigung zum Abrufen der Abteilungsmitglieder")
+            val hasAccess = permissionService.hasPermission(
+                userContexts = listOf(context),
+                action = ActionType.READ,
+                resource = resourceToCheck
+            )
+
+            if (hasAccess) {
+                when (context.scope.name) {
+                    // 1. COMPANY (Admin): Darf absolut ALLE freigeschalteten User sehen
+                    ScopeType.COMPANY -> {
+                        resultUsers.addAll(userRepository.findByIsApprovedTrueAndIsArchivedFalse())
+                    }
+
+                    // 2. DEPARTMENT: Alle User aus der eigenen Abteilung hinzufügen
+                    ScopeType.DEPARTMENT -> {
+                        context.scopeInstanceId?.let { deptId ->
+                            resultUsers.addAll(
+                                userRepository.findByIsApprovedAndDepartmentIdAndIsArchivedFalse(true, deptId)
+                            )
+                        }
+                    }
+
+                    // 3. PROJECT: Alle Kollegen aus Projekten hinzufügen, in denen der User Mitglied ist!
+                    ScopeType.PROJECT -> {
+                        context.scopeInstanceId?.let { projectId ->
+                            val projectMembers = projectMemberRepository.findByProjectId(projectId)
+                            resultUsers.addAll(
+                                projectMembers.map { it.user }.filter { it.isApproved && !it.isArchived }
+                            )
+                        }
+                    }
+
+                    else -> {}
+                }
+            }
         }
 
-        val departmentUsers = userRepository.findByIsApprovedAndDepartmentIdAndIsArchivedFalse(true, userDeptId)
-
-        return departmentUsers.map { user ->
+        // Wandelt alle gesammelten (eindeutigen) User in DTOs um
+        return resultUsers.map { user ->
             val coffeeAccount = coffeeAccountRepository.findById(user.id).orElse(null)
-
             ProjectMemberDto(
                 user = userService.entityToUserResponseDto(user, coffeeAccount),
                 projectRole = "NONE"

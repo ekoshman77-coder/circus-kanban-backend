@@ -23,11 +23,11 @@ data class NoteSecurityResource(
 }
 
 // Note Mapper
-fun NoteEntity.toSecurityResource(): NoteSecurityResource {
+fun NoteEntity.toSecurityResource(projectId: String? = null): NoteSecurityResource {
     return NoteSecurityResource(
         ownerUserId = this.userId,
-        departmentId = this.departmentId
-        // projectId = this.projectId (für die Zukunft vorbereitet)
+        departmentId = this.departmentId,
+        projectId = projectId
     )
 }
 

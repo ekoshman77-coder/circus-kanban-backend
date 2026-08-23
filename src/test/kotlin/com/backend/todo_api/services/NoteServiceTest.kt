@@ -1,15 +1,15 @@
 package com.backend.todo_api.services
 
 import com.backend.todo_api.data.entity.NoteEntity
+import com.backend.todo_api.data.entity.RoleEntity
 import com.backend.todo_api.data.entity.ScopeEntity
 import com.backend.todo_api.data.entity.UserEntity
 import com.backend.todo_api.data.repository.NoteRepository
 import com.backend.todo_api.data.repository.UserRepository
 import com.backend.todo_api.dto.CreateNoteDto
 import com.backend.todo_api.dto.NoteDto
-import com.backend.todo_api.exceptions.UserDeletedException
 import com.backend.todo_api.model.ActionType
-import com.backend.todo_api.model.ResourceType
+import com.backend.todo_api.model.RoleType
 import com.backend.todo_api.model.ScopeType
 import io.mockk.every
 import io.mockk.mockk
@@ -78,30 +78,71 @@ class NoteServiceTest {
         }
     }
 
-    // --- 2. GET NOTES BY USER ID (FILTER-BRILLE) ---
+    // --- 2. GET NOTES BY USER ID ---
 
     @Test
-    fun `getNotesByUserId sollte Abteilungsnotizen filtern wenn MaxContext DEPARTMENT ist`() {
-        val deptScope = ScopeEntity(name = ScopeType.DEPARTMENT)
-        val context = UserContext(scope = deptScope, scopeInstanceId = "dept-42", role = mockk())
-        val note = NoteEntity(id = noteId, title = "Team Notiz", departmentId = "dept-42")
+    fun `getNotesByUserId - liefert Notizen aus RESOURCE, DEPARTMENT und PROJECT Scopes ohne Duplikate`() {
+        // GIVEN
+        val userId = "user-123"
+        val deptId = "dept-1"
+        val projId = "proj-1"
 
-        every { userContextResolver.resolveContexts(userId) } returns listOf(context)
-        every {
-            permissionService.getMaxAllowedUserContext(
-                userContexts = any(),
-                action = ActionType.READ,
-                resource = ResourceType.NOTE
-            )
-        } returns context
+        val scopeResource = ScopeEntity(name = ScopeType.RESOURCE)
+        val scopeDept = ScopeEntity(name = ScopeType.DEPARTMENT)
+        val scopeProj = ScopeEntity(name = ScopeType.PROJECT)
 
-        every { noteRepository.findByDepartmentIdAndIsArchivedFalse("dept-42") } returns listOf(note)
+        // Direkte Instanziierung der RoleEntity ohne Repository-Mocking!
+        val roleOwner = RoleEntity(name = RoleType.OWNER)
+        val roleMember = RoleEntity(name = RoleType.MEMBER)
+        val roleDeveloper = RoleEntity(name = RoleType.DEVELOPER)
 
-        val notes = noteService.getNotesByUserId(userId)
+        val contextResource = UserContext(scope = scopeResource, scopeInstanceId = userId, role = roleOwner)
+        val contextDept = UserContext(scope = scopeDept, scopeInstanceId = deptId, role = roleMember)
+        val contextProj = UserContext(scope = scopeProj, scopeInstanceId = projId, role = roleDeveloper)
 
-        assertEquals(1, notes.size)
-        assertEquals("Team Notiz", notes[0].title)
-        verify { noteRepository.findByDepartmentIdAndIsArchivedFalse("dept-42") }
+        every { userContextResolver.resolveContexts(userId) } returns listOf(contextResource, contextDept, contextProj)
+        every { permissionService.hasPermission(any(), ActionType.READ, any()) } returns true
+
+        val ownNote = NoteEntity(id = "n1", userId = userId, title = "Eigene Notiz")
+        val deptNote = NoteEntity(id = "n2", userId = "other-user", departmentId = deptId, title = "Abteilungs-Notiz")
+        val projNote = NoteEntity(id = "n3", userId = "other-user-2", title = "Projekt-Idee")
+
+        every { noteRepository.findByUserIdAndIsArchivedFalse(userId) } returns listOf(ownNote)
+        every { noteRepository.findByDepartmentIdAndIsArchivedFalse(deptId) } returns listOf(deptNote)
+        every { noteRepository.findNotesByProjectId(projId) } returns listOf(projNote)
+
+        // WHEN
+        val result = noteService.getNotesByUserId(userId)
+
+        // THEN
+        assertEquals(3, result.size)
+        assertTrue(result.any { it.id == "n1" })
+        assertTrue(result.any { it.id == "n2" })
+        assertTrue(result.any { it.id == "n3" })
+
+        verify(exactly = 1) { noteRepository.findByUserIdAndIsArchivedFalse(userId) }
+        verify(exactly = 1) { noteRepository.findByDepartmentIdAndIsArchivedFalse(deptId) }
+        verify(exactly = 1) { noteRepository.findNotesByProjectId(projId) }
+    }
+
+    @Test
+    fun `getNoteById - wirft SecurityException wenn keine Berechtigung vorhanden`() {
+        // GIVEN
+        val userId = "user-123"
+        val noteId = "note-999"
+        val noteEntity = NoteEntity(id = noteId, userId = "owner-456", title = "Geheim")
+
+        every { noteRepository.findById(noteId) } returns Optional.of(noteEntity)
+        every { userContextResolver.resolveContexts(userId) } returns emptyList()
+        every { permissionService.hasPermission(any(), ActionType.READ, any()) } returns false
+
+        // WHEN & THEN
+        val exception = assertThrows<SecurityException> {
+            noteService.getNoteById(userId, noteId)
+        }
+
+        assertTrue(exception.message!!.contains("Zugriff verweigert"))
+        verify(exactly = 1) { permissionService.hasPermission(any(), ActionType.READ, any()) }
     }
 
     // --- 3. UPDATE & DELETE ---

@@ -239,15 +239,16 @@ class UserService(
         }
     }
 
-    // 📋 Für Warteraum (getUnapprovedUsers) – liefert jetzt UserResponseDto inklusive Kaffeekonto
+    // 📋 Für Warteraum (getUnapprovedUsers) – Nur für Admins (COMPANY-Scope)
     fun getUnapprovedUsers(currentUserId: String): List<UserResponseDto> {
         val userContexts = userContextResolver.resolveContexts(currentUserId)
-        val userResource = UserSecurityResource(targetUserId = currentUserId)
 
+        // Prüft gegen die Matrix, ob der User READ-Rechte auf USER-Ressourcen hat
+        val dummyResource = UserSecurityResource(targetUserId = currentUserId)
         val hasAccess = permissionService.hasPermission(
             userContexts = userContexts,
             action = ActionType.READ,
-            resource = userResource
+            resource = dummyResource
         )
 
         if (!hasAccess) {

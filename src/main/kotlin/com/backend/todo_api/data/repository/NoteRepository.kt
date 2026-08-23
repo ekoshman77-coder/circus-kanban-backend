@@ -22,4 +22,18 @@ interface NoteRepository: JpaRepository<NoteEntity, String> {
     """)
     fun findActiveGlobalAndDepartmentNotes(@Param("departmentId") departmentId: String): List<NoteEntity>
     fun findByDepartmentIdAndIsArchivedFalse(deptId: String): List<NoteEntity>
+
+    @Query("""
+    SELECT n FROM NoteEntity n 
+    JOIN ProjectEntity p ON p.ideaId = n.id 
+    WHERE p.id IN :projectIds AND n.isArchived = false
+""")
+    fun findNotesByProjectIds(@Param("projectIds") projectIds: List<String>): List<NoteEntity>
+
+    @Query("""
+    SELECT n FROM NoteEntity n 
+    JOIN ProjectEntity p ON p.ideaId = n.id 
+    WHERE p.id = :projectId AND n.isArchived = false
+""")
+    fun findNotesByProjectId(@Param("projectId") projectId: String): List<NoteEntity>
 }

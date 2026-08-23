@@ -71,4 +71,16 @@ class GlobalExceptionHandler {
         ResponseEntity.status(HttpStatus.FORBIDDEN) // 🛡️ 403 Forbidden für den Warteraum!
             .body(ErrorResponse(ErrorCode.FORBIDDEN, ex.message))
 
+    // 🛡️ 409 Conflict für doppelte Berechtigungen
+    @ExceptionHandler(PermissionAlreadyExistsException::class)
+    fun handlePermissionAlreadyExists(ex: PermissionAlreadyExistsException) =
+        ResponseEntity.status(HttpStatus.CONFLICT)
+            .body(ErrorResponse(ErrorCode.INVALID_DATA, ex.message))
+
+    // 🛡️ 404 Not Found für nicht existierende Berechtigungen
+    @ExceptionHandler(PermissionNotFoundException::class)
+    fun handlePermissionNotFound(ex: PermissionNotFoundException) =
+        ResponseEntity.status(HttpStatus.NOT_FOUND)
+            .body(ErrorResponse(ErrorCode.INVALID_DATA, ex.message))
+
 }
