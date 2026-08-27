@@ -139,4 +139,5 @@ interface TodoRepository : JpaRepository<TodoEntity, String>, JpaSpecificationEx
 """)
     fun findActiveTeamTodosForUser(@Param("userId") userId: String): List<TodoEntity>
     fun findByUserIdAndMilestoneIdIsNullAndIsArchivedFalse(userId: String): List<TodoEntity>
+    fun findByMilestoneIdIn(milestoneIds: List<String>): List<TodoEntity>
 }

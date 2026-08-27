@@ -3,6 +3,7 @@ package com.backend.todo_api.data.entity
 import com.backend.todo_api.dto.ProjectDto
 import com.backend.todo_api.dto.UserDto
 import jakarta.persistence.*
+import java.time.LocalDateTime
 import java.util.UUID
 
 @Entity
@@ -32,6 +33,9 @@ class ProjectEntity(
 
     @Column(name = "department_id", nullable = false)
     var departmentId: String = "",
+
+    @Column(name = "project_streak_covered_until")
+    var projectStreakCoveredUntil: LocalDateTime? = null,
 
     @OneToMany(mappedBy = "project", cascade = [CascadeType.ALL], orphanRemoval = true, fetch = FetchType.EAGER)
     var milestones: MutableList<MilestoneEntity> = mutableListOf(),

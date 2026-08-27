@@ -2,27 +2,42 @@ package com.backend.todo_api.services
 
 import com.backend.todo_api.data.entity.TodoEntity
 import com.backend.todo_api.data.entity.UserEntity
+import com.backend.todo_api.data.repository.MilestoneRepository
+import com.backend.todo_api.data.repository.ProjectRepository
 import com.backend.todo_api.data.repository.TodoRepository
 import com.backend.todo_api.data.repository.UserRepository
+import com.backend.todo_api.dto.ProjectStreakInfoDto
 import com.backend.todo_api.dto.StreakInfoDto
+import com.backend.todo_api.model.ActionType
+import com.backend.todo_api.model.toSecurityResource
 import org.springframework.stereotype.Service
 import java.math.BigDecimal
 import java.math.RoundingMode
 import java.time.DayOfWeek
 import java.time.LocalDateTime
+import java.time.ZoneId
 import java.time.temporal.ChronoUnit
 import kotlin.math.roundToInt
 
 @Service
 class StreakService(
     private val todoRepository: TodoRepository,
-    private val userRepository: UserRepository
+    private val userRepository: UserRepository,
+    private val projectRepository: ProjectRepository,
+    private val milestoneRepository: MilestoneRepository,
+    private val permissionService: PermissionService,
+    private val userContextResolver: UserContextResolver
 ) {
     companion object {
         private val DAILY_EFFORT_GOAL = 2.0
         private val MAX_PUFFER_DAYS = 10.0
+        private val PROJECT_MAX_PUFFER_DAYS = 2.0
+        private val MIN_PUFFER_FOR_REVIEW = 15
     }
 
+    /**
+     * Berechnet die Live-Informationen für das Frontend (beim Sync oder Abfragen).
+     */
     /**
      * Berechnet die Live-Informationen für das Frontend (beim Sync oder Abfragen).
      */
@@ -30,57 +45,92 @@ class StreakService(
         val now = LocalDateTime.now()
         val coveredUntil = user.streakCoveredUntil
 
-        // Prüfen, ob wir aktiven Schutz durch laufende Projektaufgaben haben
-        val hasActiveShield = checkProjectShield(user.id)
+        // 1. Eigener Ticket-Schild (IN_PROGRESS / REVIEW)
+        val hasPersonalShield = checkProjectShield(user.id)
+
+        // 2. 🎯 NEU: Team-Schutzschild prüfen!
+        // Brennt die Flamme in mindestens einem Projekt, in dem der User Mitglied ist?
+        val hasTeamShield = checkTeamShieldForUser(user.id)
+
+        val isShieldActive = hasPersonalShield || hasTeamShield
 
         // Falls kein Datum gesetzt ist oder es abgelaufen ist
         if (coveredUntil == null || coveredUntil.isBefore(now)) {
-            return if (hasActiveShield) {
-                // Schutzschild rettet die Flamme vor dem Ausgehen!
+            return if (isShieldActive) {
+                // Team oder eigene Arbeit rettet die persönliche Flamme!
+                val shieldReason = if (hasPersonalShield) {
+                    "Schutzschild aktiv: Du arbeitest an einer Projektaufgabe!"
+                } else {
+                    "🛡️ Team-Schutzschild aktiv: Dein Team hält die Flamme für dich am Brennen!"
+                }
+
                 StreakInfoDto(
-                    streakDays = calculateCurrentStreakDays(user),
-                    batteryPercentage = 15, // Künstlicher Mindestwert im UI
+                    streakDays = calculateCurrentStreakDays(user).coerceAtLeast(1),
+                    batteryPercentage = MIN_PUFFER_FOR_REVIEW, // Optischer Not-Puffer im UI
                     pufferDaysRemaining = 0.0,
                     isShieldActive = true,
-                    infoText = "Schutzschild aktiv: Du arbeitest an einer Projektaufgabe!"
+                    infoText = shieldReason
                 )
             } else {
-                // Akku komplett leer, Flamme aus
+                // Keiner hilft -> Flamme aus
                 StreakInfoDto(
                     streakDays = 0,
                     batteryPercentage = 0,
                     pufferDaysRemaining = 0.0,
                     isShieldActive = false,
-                    infoText = "Batterie leer. Schließe eine Projektaufgabe ab, um sie aufzuladen!"
+                    infoText = "Batterie leer. Schließe eine Aufgabe ab, um sie aufzuladen!"
                 )
             }
         }
 
         // Wenn wir noch Saft haben, berechnen wir die echten verbleibenden Arbeitstage
-      //  val startOfToday = now.toLocalDate().atStartOfDay()
+        //  val startOfToday = now.toLocalDate().atStartOfDay()
         val remainingWorkDays = calculateRemainingWorkDays(now, coveredUntil)
 
-        // Prozentwert berechnen (Abstand ist jetzt >= 10 Tage, d.h. wir treffen die 100%)
-        val percentage = ((remainingWorkDays / MAX_PUFFER_DAYS) * 100).roundToInt().coerceIn(0, 100)
-        //val streakDays = calculateCurrentStreakDays(user)
+// 1. Regulären Prozentwert berechnen
+        val calculatedPercentage = ((remainingWorkDays / MAX_PUFFER_DAYS) * 100).roundToInt().coerceIn(0, 100)
+
+        // 🎯 2. Schild-Sicherung: Wenn du arbeitest (REVIEW/IN_PROGRESS), sinkt die Anzeige nie unter 15%!
+        val finalPercentage = if (isShieldActive) {
+            calculatedPercentage.coerceAtLeast(MIN_PUFFER_FOR_REVIEW)
+        } else {
+            calculatedPercentage
+        }
 
         val roundedDaysInt = remainingWorkDays.roundToInt()
 
-        // Wenn die Batterie 100% hat, passen wir den Info-Text an oder nutzen ein Flag
-        val infoText = if (percentage >= 100) {
+        // 3. Info-Text basierend auf der finalen Prozentzahl
+        val infoText = if (finalPercentage >= 100) {
             "🌌 OVERDRIVE AKTIV! Deine Batterie strahlt in voller Overtime-Glut!"
-        } else if (hasActiveShield) {
+        } else if (isShieldActive) {
             "Batterie geschützt durch aktive Arbeit. Reicht noch für ca. ${roundedDaysInt} Tage."
         } else {
             "Dein Akku ist geladen! Puffer reicht für ca. ${roundedDaysInt} Tage."
         }
+
         return StreakInfoDto(
             streakDays = roundedDaysInt,
-            batteryPercentage = percentage,
+            batteryPercentage = finalPercentage, // 👈 HIER "finalPercentage" übergeben!
             pufferDaysRemaining = remainingWorkDays,
-            isShieldActive = hasActiveShield,
+            isShieldActive = isShieldActive,
             infoText = infoText
         )
+    }
+
+    /**
+     * Prüft, ob der User in mindestens einem Projekt ist, dessen Team-Akku noch aktiv brennt.
+     */
+    private fun checkTeamShieldForUser(userId: String): Boolean {
+        val user = userRepository.findById(userId).orElse(null) ?: return false
+        val now = LocalDateTime.now()
+
+        // Alle Projekte holen, in denen der User Mitglied ist
+        val userProjects = user.projectMemberships.map { it.project }
+
+        // Prüfen, ob mindestens ein Projekt einen aktiven Streak-Puffer hat
+        return userProjects.any { project ->
+            project.projectStreakCoveredUntil != null && project.projectStreakCoveredUntil!!.isAfter(now)
+        }
     }
 
     /**
@@ -88,7 +138,11 @@ class StreakService(
      */
     fun updateStreakOnTodoCompleted(user: UserEntity, todo: TodoEntity): UserEntity {
         // Regel: Nur Projektaufgaben (milestoneId nicht leer/null) zählen für die Team-Batterie!
-        if (todo.milestoneId.isNullOrBlank()) return user
+        if (todo.milestoneId.isNullOrBlank()) {
+            return user
+        }
+
+        updateProjectStreakInfo(todo.milestoneId, todo.effort)
 
         val now = LocalDateTime.now()
         // Wenn die Batterie schon leer war, starten wir bei 'now', sonst bauen wir auf dem alten Puffer auf
@@ -110,6 +164,62 @@ class StreakService(
         }
 
         return userRepository.save(user)
+    }
+
+    private fun updateProjectStreakInfo(milestoneId: String?, effort: Int) {
+        if (milestoneId.isNullOrBlank()) {
+            return
+        }
+        val milestone = milestoneRepository.findById(milestoneId!!).orElse(null)
+        val project = milestone?.project
+
+        if (project == null) {
+            return
+        }
+
+        // A. N_aktiv & Q_erforderlich für das Projekt ermitteln
+        val milestoneIds = project.milestones.map { it.id }
+        val projectTodos = todoRepository.findByMilestoneIdIn(milestoneIds)
+        val now = LocalDateTime.now()
+        val sevenDaysAgoEpoch = now.minusDays(7).atZone(ZoneId.systemDefault()).toInstant().toEpochMilli()
+        val activeUserIds = projectTodos.filter { t ->
+            val wasActiveRecently = t.completedAt != null && t.completedAt!! >= sevenDaysAgoEpoch
+            val isInProgress = t.teamStatus == "IN_PROGRESS" || t.teamStatus == "REVIEW"
+            wasActiveRecently || isInProgress
+        }.map { it.userId }.toSet()
+
+        val nActive = activeUserIds.size.coerceAtLeast(1)
+        val qRequired = kotlin.math.max(1, kotlin.math.ceil(nActive * 0.5).toInt())
+
+        // B. Projekt-Puffer erweitern
+        // Formel: (Effort des Todos) / (Tagesziel-Aufwand * Q_erforderlich)
+        val dailyGoalPerUser = 2.0
+        val teamDailyGoal = dailyGoalPerUser * qRequired
+
+        // Effort-Anteil in Tagen berechnen (z.B. Effort 2 / Teamziel 4 = 0.5 Tage Akku)
+        val daysToAdd = effort.toDouble() / teamDailyGoal
+
+        val currentCoveredUntil = project.projectStreakCoveredUntil
+        val baseTime = if (currentCoveredUntil != null && currentCoveredUntil.isAfter(now)) {
+            currentCoveredUntil
+        } else {
+            now
+        }
+
+        // Neuen Projekt-Akku setzen (maximal z. B. MAX_PUFFER_DAYS im Voraus)
+        val newCoveredUntil = addWorkDaysSkippingWeekends(baseTime, daysToAdd)
+
+        // Deckelung auf maximal 2 Arbeitstage in der Zukunft ab JETZT!
+        val maxAllowedCoveredUntil = addWorkDaysSkippingWeekends(now, PROJECT_MAX_PUFFER_DAYS)
+
+        project.projectStreakCoveredUntil = if (newCoveredUntil.isAfter(maxAllowedCoveredUntil)) {
+            maxAllowedCoveredUntil
+        } else {
+            newCoveredUntil
+        }
+
+        // Projekt-Entität speichern
+        projectRepository.save(project)
     }
 
     /**
@@ -220,5 +330,103 @@ class StreakService(
 
         // Danach rufen wir einfach deine bestehende Logik auf, die das Dto baut
         return getCurrentStreakInfo(user)
+    }
+
+    /**
+     * Berechnet die Team-Streak-Informationen für ein spezifisches Projekt unter Berücksichtigung der Berechtigungen.
+     */
+    fun getProjectStreakInfo(userId: String, projectId: String): ProjectStreakInfoDto {
+        val project = projectRepository.findById(projectId)
+            .orElseThrow { IllegalArgumentException("Projekt mit ID $projectId nicht gefunden") }
+
+        // 1. Alle Sicherheits-Kontexte des Benutzers laden
+        val userContexts = userContextResolver.resolveContexts(userId)
+
+        // 2. Rechteprüfung über den PermissionService
+        val canRead = permissionService.hasPermission(
+            userContexts = userContexts,
+            action = ActionType.READ,
+            resource = project.toSecurityResource()
+        )
+
+        if (!canRead) {
+            throw SecurityException("Zugriff verweigert: Du hast keine Berechtigung, dieses Projekt zu lesen.")
+        }
+
+        // 3. Wenn keine Meilensteine vorhanden sind -> Leeres DTO zurückgeben
+        val milestoneIds = project.milestones.map { it.id }
+        if (milestoneIds.isEmpty()) {
+            return createEmptyProjectStreakDto(projectId)
+        }
+
+        // 4. Todos der Meilensteine laden und In-Memory auswerten
+        val projectTodos = todoRepository.findByMilestoneIdIn(milestoneIds)
+
+        val now = LocalDateTime.now()
+        val sevenDaysAgoEpoch = now.minusDays(7).atZone(ZoneId.systemDefault()).toInstant().toEpochMilli()
+        val todayStartEpoch = now.toLocalDate().atStartOfDay(ZoneId.systemDefault()).toInstant().toEpochMilli()
+
+        // 1. User der letzten 7 Tage ermitteln
+        val recentUserIds = projectTodos.filter { todo ->
+            val wasActiveRecently = todo.completedAt != null && todo.completedAt!! >= sevenDaysAgoEpoch
+            val isInProgress = todo.teamStatus == "IN_PROGRESS" || todo.teamStatus == "REVIEW"
+            wasActiveRecently || isInProgress
+        }.map { it.userId }.toSet()
+
+        // 2. Heutige Beiträge & Schild-Status bestimmen
+        val todaysTodos = projectTodos.filter { t ->
+            t.done && t.completedAt != null && t.completedAt!! >= todayStartEpoch
+        }
+        val todaysContributedUserIds = todaysTodos.map { it.userId }.toSet()
+        val todaysTotalEffort = todaysTodos.sumOf { it.effort }
+
+        val shieldUserIds = projectTodos.filter { t ->
+            !t.done && (t.teamStatus == "IN_PROGRESS" || t.teamStatus == "REVIEW")
+        }.map { it.userId }.toSet()
+
+        // 🎯 3. Wer war heute ODER in den letzten 7 Tagen aktiv? (Alle vereinen!)
+        val allActiveUserIds = recentUserIds + todaysContributedUserIds + shieldUserIds
+
+        // 4. Team-Größe & Erforderliches Quorum berechnen
+        val nActive = allActiveUserIds.size.coerceAtLeast(1)
+        val qRequired = kotlin.math.max(1, kotlin.math.ceil(nActive * 0.5).toInt())
+
+        val effectiveActiveMembersCount = (todaysContributedUserIds + shieldUserIds).size
+        val isTeamShieldActive = shieldUserIds.isNotEmpty()
+
+        // Verbleibenden Akku berechnen
+        val coveredUntil = project.projectStreakCoveredUntil
+        val remainingWorkDays = if (coveredUntil != null && coveredUntil.isAfter(now)) {
+            calculateRemainingWorkDays(now, coveredUntil)
+        } else 0.0
+
+        // Prozentwert berechnet sich jetzt auf Basis von maximal 2 Tagen (100% = 2 Tage Puffer)
+        val percentage = ((remainingWorkDays / PROJECT_MAX_PUFFER_DAYS) * 100).roundToInt().coerceIn(0, 100)
+        val streakDays = remainingWorkDays.roundToInt()
+        return ProjectStreakInfoDto(
+            projectId = projectId,
+            streakDays = streakDays,
+            batteryPercentage = percentage,
+            activeMembersCount = nActive,
+            requiredMembersCount = qRequired,
+            todaysContributedMembers = effectiveActiveMembersCount,
+            todaysTotalEffort = todaysTotalEffort.toDouble(),
+            activeShieldMembersCount = shieldUserIds.size,
+            isShieldActive = isTeamShieldActive
+        )
+    }
+
+    private fun createEmptyProjectStreakDto(projectId: String): ProjectStreakInfoDto {
+        return ProjectStreakInfoDto(
+            projectId = projectId,
+            streakDays = 0,
+            batteryPercentage = 0,
+            activeMembersCount = 0,
+            requiredMembersCount = 1,
+            todaysContributedMembers = 0,
+            todaysTotalEffort = 0.0,
+            activeShieldMembersCount = 0,
+            isShieldActive = false
+        )
     }
 }
