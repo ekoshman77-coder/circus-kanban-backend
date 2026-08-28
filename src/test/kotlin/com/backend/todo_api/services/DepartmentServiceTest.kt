@@ -10,8 +10,6 @@ import com.backend.todo_api.data.repository.UserRepository
 import com.backend.todo_api.dto.DepartmentDto
 import com.backend.todo_api.exceptions.ActionForbiddenException
 import com.backend.todo_api.model.ActionType
-import com.backend.todo_api.model.DepartmentSecurityResource
-import com.backend.todo_api.model.ResourceType
 import com.backend.todo_api.model.ScopeType
 import io.mockk.*
 import org.junit.jupiter.api.Assertions.*

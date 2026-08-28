@@ -1,6 +1,7 @@
 package com.backend.todo_api.services
 
 import com.backend.todo_api.data.entity.TodoEntity
+import com.backend.todo_api.data.repository.TodoRepository
 import com.backend.todo_api.data.repository.UserRepository
 import com.backend.todo_api.dto.GamificationResult
 import com.backend.todo_api.model.RewardUpdateResult
@@ -11,9 +12,9 @@ import org.springframework.transaction.annotation.Transactional
 class TodoRewardOrchestrator(
     private val gamificationService: GamificationService,
     private val streakService: StreakService,
-    private val userRepository: UserRepository
+    private val userRepository: UserRepository,
+    private val todoRepository: TodoRepository
 ) {
-
     /**
      * Ermittelt den primären Entwickler/Empfänger für das Todo.
      */
@@ -40,21 +41,33 @@ class TodoRewardOrchestrator(
 
         // 3. STREAKS VERARBEITEN
         if (isDone) {
-            if (!todo.milestoneId.isNullOrBlank()) {
-                streakService.updateProjectStreakInfo(todo.milestoneId, todo.effort)
-            }
-            if (devEffort > 0.0) {
-                userRepository.findById(devUserId).ifPresent { devUser ->
-                    streakService.applyStreakEffortToUser(devUser, devEffort)
+            // 🔒 STREAK-PUNKTE NUR BEIM ERSTEN SCHLIESSEN VERTEILEN
+            if (!todo.streakAlreadyRewarded) {
+                if (!todo.milestoneId.isNullOrBlank()) {
+                    streakService.updateProjectStreakInfo(todo.milestoneId, todo.effort)
                 }
+                if (devEffort > 0.0) {
+                    userRepository.findById(devUserId).ifPresent { devUser ->
+                        streakService.applyStreakEffortToUser(devUser, devEffort)
+                    }
+                }
+                if (!todo.reviewerId.isNullOrBlank() && todo.reviewerId != devUserId && reviewerEffort > 0.0) {
+                    userRepository.findById(todo.reviewerId!!).ifPresent { reviewerUser ->
+                        streakService.applyStreakEffortToUser(reviewerUser, reviewerEffort)
+                    }
+                }
+                // Flag setzen, damit beim 2. Schließen keine Punkte fließen
+                todo.streakAlreadyRewarded = true
+                todoRepository.save(todo)
             }
-            if (!todo.reviewerId.isNullOrBlank() && todo.reviewerId != devUserId && reviewerEffort > 0.0) {
-                userRepository.findById(todo.reviewerId!!).ifPresent { reviewerUser ->
-                    streakService.applyStreakEffortToUser(reviewerUser, reviewerEffort)
+        } else {
+            // 🔄 WIEDERÖFFNEN AUS DONE (Korrektur/Bulgarisch-Fall): 2% Malus abziehen
+            if (todo.streakAlreadyRewarded) {
+                userRepository.findById(devUserId).ifPresent { devUser ->
+                    streakService.deductPenaltyEffortFromUser(devUser)
                 }
             }
         }
-
         // 4. GAMIFICATION (XP) VERARBEITEN
         var devResult: GamificationResult? = null
         if (devEffort > 0.0) {

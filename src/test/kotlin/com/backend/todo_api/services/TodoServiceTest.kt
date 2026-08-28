@@ -1,6 +1,7 @@
 package com.backend.todo_api.services
 
 import com.backend.todo_api.data.entity.TodoEntity
+import com.backend.todo_api.data.entity.UserEntity
 import com.backend.todo_api.data.repository.MilestoneRepository
 import com.backend.todo_api.data.repository.ProjectMemberRepository
 import com.backend.todo_api.data.repository.TodoRepository
@@ -12,6 +13,7 @@ import com.backend.todo_api.dto.TodoDto
 import com.backend.todo_api.exceptions.ActionForbiddenException
 import com.backend.todo_api.exceptions.UserDeletedException
 import com.backend.todo_api.model.ActionType
+import com.backend.todo_api.model.RewardUpdateResult
 import io.mockk.*
 import io.mockk.impl.annotations.InjectMockKs
 import io.mockk.impl.annotations.MockK
@@ -31,6 +33,9 @@ class TodoServiceTest {
 
     @MockK
     lateinit var gamificationService: GamificationService
+
+    @MockK
+    lateinit var todoRewardOrchestrator: TodoRewardOrchestrator
 
     @MockK
     lateinit var milestoneService: MilestoneService
@@ -62,7 +67,14 @@ class TodoServiceTest {
 
         // Standard-Mocking für UserContextResolver & PermissionService
         every { userContextResolver.resolveContexts(any<String>()) } returns emptyList()
-        every { userContextResolver.resolveContexts(any<String>()) } returns emptyList()
+
+        // 🛡️ standardmäßiger Fallback für den Orchestrator, damit Updaten/Erstellen nie an NullPointern abstürzt
+        val dummyRewardResult = RewardUpdateResult(
+            gamificationResult = mockk(relaxed = true),
+            streakInfo = mockk(relaxed = true)
+        )
+        every { todoRewardOrchestrator.processTodoCompletionRewards(any(), any(), any()) } returns dummyRewardResult
+        every { todoRewardOrchestrator.getCombinedRewardState(any()) } returns dummyRewardResult
     }
 
     // --- 1. ERSTELLEN & BERECHTIGUNG ---
@@ -115,7 +127,7 @@ class TodoServiceTest {
         every { todoRepository.findByIdAndIsArchivedFalse(todoId) } returns dbEntity
         every { permissionService.hasPermission(any(), ActionType.UPDATE, any()) } returns true
         every { todoRepository.save(any()) } answers { firstArg() }
-        every { gamificationService.determineXpReceiverUserId(any(), any()) } returns userId
+        every { todoRewardOrchestrator.determineXpReceiverUserId(any(), any()) } returns userId
         every { userRepository.findById(userId) } returns Optional.of(mockk(relaxed = true))
         every { streakService.getCurrentStreakInfo(any()) } returns mockk(relaxed = true)
 
@@ -139,7 +151,7 @@ class TodoServiceTest {
             effort = 3
         )
 
-        val freshUser = mockk<com.backend.todo_api.data.entity.UserEntity>(relaxed = true)
+        val freshUser = mockk<UserEntity>(relaxed = true)
 
         every { userRepository.findById(userId) } returns Optional.of(freshUser)
         every { userRepository.existsById(userId) } returns true

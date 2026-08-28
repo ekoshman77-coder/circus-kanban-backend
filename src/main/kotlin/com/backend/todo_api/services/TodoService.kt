@@ -65,7 +65,8 @@ class TodoService (
             effortChangesCount = 0,
             cooldownTurns = 0,
             focusType = "LOW_FOCUS",
-            snoozedUntil = 0L
+            snoozedUntil = 0L,
+            streakAlreadyRewarded = false,
         )
     }
 

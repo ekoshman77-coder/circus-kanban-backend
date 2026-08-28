@@ -428,6 +428,18 @@ class StreakService(
         )
     }
 
+    fun deductPenaltyEffortFromUser(user: UserEntity) {
+        val coveredUntil = user.streakCoveredUntil ?: return
+        val now = LocalDateTime.now()
+
+        if (coveredUntil.isAfter(now)) {
+            val remainingMinutes = ChronoUnit.MINUTES.between(now, coveredUntil)
+            val penaltyMinutes = (remainingMinutes * 0.02).toLong().coerceAtLeast(15)
+            user.streakCoveredUntil = coveredUntil.minusMinutes(penaltyMinutes)
+            userRepository.save(user)
+        }
+    }
+
     private fun createEmptyProjectStreakDto(projectId: String): ProjectStreakInfoDto {
         return ProjectStreakInfoDto(
             projectId = projectId,
