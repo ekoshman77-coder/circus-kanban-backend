@@ -32,12 +32,12 @@ import org.springframework.transaction.annotation.Transactional
 class TodoService (
     private val todoRepository: TodoRepository,
     private val userRepository: UserRepository,
-    private val gamificationService: GamificationService,
+    private val todoRewardOrchestrator: TodoRewardOrchestrator,
     private val milestoneService: MilestoneService,
     private val milestoneRepository: MilestoneRepository,
-    private val streakService: StreakService,
     private val permissionService: PermissionService,
-    private val userContextResolver: UserContextResolver
+    private val userContextResolver: UserContextResolver,
+
 ) {
     // 1. NEUERSTELLUNG: Wandelt CreateTodoDto in eine neue Entity um und initialisiert versteckte Felder
     private fun mapToNewEntity(dto: CreateTodoDto): TodoEntity {
@@ -58,8 +58,10 @@ class TodoService (
             isStarted = dto.isStarted,
             teamStatus = dto.teamStatus,
             lastDeveloperId = dto.lastDeveloperId,
+            reviewerId = dto.reviewerId,
+            reviewerUsedEffort = dto.reviewerUsedEffort ?: 0.0,
 
-            // 🔮 UNSERE VERSTECKTEN KI-/GAMIFICATION-FELDER (Sicher initialisiert!)
+            // UNSERE VERSTECKTEN KI-/GAMIFICATION-FELDER (Sicher initialisiert!)
             effortChangesCount = 0,
             cooldownTurns = 0,
             focusType = "LOW_FOCUS",
@@ -82,6 +84,8 @@ class TodoService (
         existingEntity.isStarted = dto.isStarted
         existingEntity.teamStatus = dto.teamStatus
         existingEntity.lastDeveloperId = dto.lastDeveloperId
+        existingEntity.reviewerId = dto.reviewerId
+        existingEntity.reviewerUsedEffort = dto.reviewerUsedEffort ?: 0.0
 
         // 🛡️ HIER PASSIERT NICHTS: cooldownTurns und focusType bleiben auf existingEntity unberührt!
         return existingEntity
@@ -106,7 +110,9 @@ class TodoService (
             assignedUserId = entity.assignedUserId,
             isStarted = entity.isStarted,
             teamStatus = entity.teamStatus,
-            lastDeveloperId = entity.lastDeveloperId
+            lastDeveloperId = entity.lastDeveloperId,
+            reviewerId = entity.reviewerId,
+            reviewerUsedEffort = entity.reviewerUsedEffort
         )
     }
 
@@ -227,7 +233,7 @@ class TodoService (
     }
 
     fun updateTodo(userId: String, dto: TodoDto): TodoUpdateResponse {
-        val  oldTodo = checkPermission(userId, dto.id, ActionType.UPDATE, "Du kannst das Todo nicht ändern")
+        val oldTodo = checkPermission(userId, dto.id, ActionType.UPDATE, "Du kannst das Todo nicht ändern")
 
         // Altzustände für Meilenstein-Berechnung merken
         val oldMilestoneId = oldTodo.milestoneId
@@ -265,34 +271,22 @@ class TodoService (
             )
         }
 
-        // 🎯 9. Fair ermitteln, wer die Gamification & Streaks bekommt (Entwickler -> Assignee -> Haken-Setzer)
-        val xpReceiverUserId = gamificationService.determineXpReceiverUserId(savedEntity, userId)
-
-        // 🎯 10. Streak für den tatsächlichen Entwickler/Bearbeiter aktualisieren
-        if (!oldDone && savedEntity.done && !savedEntity.milestoneId.isNullOrBlank()) {
-            val xpReceiverUser = userRepository.findById(xpReceiverUserId).orElseThrow()
-            streakService.updateStreakOnTodoCompleted(xpReceiverUser, savedEntity)
-        }
-
-        // 🎯 11. Gamification für den richtigen Empfänger triggern (Punkte vergeben oder abziehen)
-        var gamificationResult: GamificationResult? = null
-        if (oldDone != savedEntity.done) {
-            gamificationResult = gamificationService.processTodoStatusChange(
+        // 🎯 Belohnungen verarbeiten ODER falls keine Statusänderung vorlag, reinen Ist-Zustand holen
+        val rewardResult =
+            if (oldDone != savedEntity.done) {
+                todoRewardOrchestrator.processTodoCompletionRewards(
                 todo = savedEntity,
                 currentUserId = userId,
                 isDone = savedEntity.done
-            )
-        }
+              )
+            } else {
+                todoRewardOrchestrator.getCombinedRewardState(userId)
+            }
 
-        // 12. Aktuelle Streak-Info für den anfragenden Frontend-User holen
-        val freshUser = userRepository.findById(userId).orElseThrow()
-        val streakInfo = streakService.getCurrentStreakInfo(freshUser)
-
-        // 13. Antwort zurückgeben
         return TodoUpdateResponse(
             todo = mapToDto(savedEntity),
-            gamificationResult = gamificationResult,
-            streakInfo = streakInfo
+            gamificationResult = rewardResult.gamificationResult,
+            streakInfo = rewardResult.streakInfo
         )
     }
 
@@ -352,53 +346,6 @@ class TodoService (
             throw TodoNotFoundException("Das To-Do konnte nicht gelöscht werden")
         }
     }
-
-    // 3. STATUS UPDATE (Sicherheit erhöhen)
-//    fun updateStatus(id: String, done: Boolean, userId: String): TodoDto {
-//        validateUserExists(userId, userRepository)
-//
-//        // 🎯 Nur noch aktive Todos können ihren Status ändern
-//        val todo = todoRepository.findByIdAndIsArchivedFalse(id)
-//            ?: throw TodoNotFoundException("Todo nicht gefunden oder archiviert")
-//
-//        todo.done = done
-//        val saved = todoRepository.save(todo)
-//        return mapToDto(saved)
-//    }
-//
-//    @Transactional
-//    fun toggleStatusWithGamification(id: String, isDone: Boolean, userId: String): GamificationResult {
-//        // 1. Status in der DB updaten (wirft Exception, falls nicht vorhanden)
-//        val updatedTodoDto = this.updateStatus(id, isDone, userId)
-//
-//        // 2. XP und Level berechnen lassen und zurückgeben
-//        return gamificationService.processTodoStatusChange(
-//            userId = userId,
-//            effort = updatedTodoDto.effort,
-//            usedEffort = updatedTodoDto.usedEffort,
-//            isDone = isDone
-//        )
-//    }
-//
-//    private fun updateEffortChange(oldTodo: TodoEntity, newTodo: TodoEntity): TodoEntity {
-//        // 🧠 KI-LOGIK: Wenn sich der Aufwand geändert hat, Zähler basierend auf der DB hochzählen
-//        if (oldTodo.effort != newTodo.effort) {
-//            newTodo.effortChangesCount = oldTodo.effortChangesCount + 1
-//        } else {
-//            // Falls er gleich blieb, Zählerstand aus der DB übernehmen (damit dort keine 0 überschrieben wird)
-//            newTodo.effortChangesCount = oldTodo.effortChangesCount
-//        }
-//
-//        // DIE RETTUNG DER VERSTECKTEN KI-FELDER:
-//        // Wir impfen die neue Entity mit den unberührten Werten aus der DB
-//        newTodo.focusType = oldTodo.focusType
-//        newTodo.cooldownTurns = oldTodo.cooldownTurns
-//        newTodo.isArchived = oldTodo.isArchived
-//        newTodo.createdAt = oldTodo.createdAt // Auch das originale Erstellungsdatum bleibt so sicher!
-//        newTodo.snoozedUntil = oldTodo.snoozedUntil
-//
-//        return newTodo
-//    }
 
     @Transactional
     fun syncBulkTodos(userId: String, bulkDtos: List<TodoBulkDto>): SyncResultDto {
@@ -488,25 +435,15 @@ class TodoService (
 
         todoRepository.flush()
 
-        // Am Ende den frischen Gesamtstand fürs Frontend zusammenbauen
+        // 🎯 Frischer Gesamtstand direkt aus dem Orchestrator
+        val rewardState = todoRewardOrchestrator.getCombinedRewardState(userId)
         val aktuelleListe = getRelevantTodos(userId)
-        val finalerGamificationStand = gamificationService.getGamificationState(userId)
-        val freshUser = userRepository.findById(userId).orElseThrow()
-        val streakInfo = streakService.getCurrentStreakInfo(freshUser)
 
         return SyncResultDto(
             liste = aktuelleListe,
-            gamificationResult = finalerGamificationStand,
-            streakInfo = streakInfo
+            gamificationResult = rewardState.gamificationResult,
+            streakInfo = rewardState.streakInfo
         )
-    }
-
-    /**
-     * Reicht den Gamification-State einfach nur durch, damit der Controller
-     * den GamificationService nicht kennen muss.
-     */
-    fun getGamificationState(userId: String): GamificationResult {
-        return gamificationService.getGamificationState(userId)
     }
 
     fun getTodosByMilestone(userId: String, milestoneId: String): List<TodoDto> {

@@ -17,7 +17,13 @@ class TodoEntity(
     var dueDate: Long = 0,
     var completedAt: Long? = null,
     var effort: Int = 0,
+    @Column(name = "used_effort", nullable = false)
     var usedEffort: Int = 0,
+    @Column(name = "reviewer_id")
+    var reviewerId: String? = null,
+    @Column(name = "reviewer_used_effort", nullable = false)
+    var reviewerUsedEffort: Double = 0.0,
+
     var createdAt: Long = 0,
 
     @Column(name = "user_id", nullable = false)
@@ -48,5 +54,8 @@ class TodoEntity(
     var cooldownTurns: Int = 0, // 🌬️ Der Atem-Pausen-Zähler!
 
     @Column(name = "snoozed_until", nullable = false)
-    var snoozedUntil: Long = 0L // ⏱️ Der Zeitstempel, bis wann geschlummert wird!
+    var snoozedUntil: Long = 0L, // ⏱️ Der Zeitstempel, bis wann geschlummert wird!
+
+    @Column(name = "streak_already_rewarded")
+    var streakAlreadyRewarded: Boolean = false
 )

@@ -15,7 +15,9 @@ open class CreateTodoDto(
     val assignedUserId: String? = null,
     val isStarted: Boolean = false,
     val teamStatus: String = "BACKLOG",
-    val lastDeveloperId: String? = null
+    val lastDeveloperId: String? = null,
+    val reviewerId: String? = null,
+    val reviewerUsedEffort: Double? = null
 )
 
 open class TodoDto(
@@ -37,7 +39,9 @@ open class TodoDto(
     isStarted: Boolean = false,
     val effortChangesCount: Int? = 0,
     teamStatus: String = "BACKLOG",
-    lastDeveloperId: String? = null
+    lastDeveloperId: String? = null,
+    reviewerId: String? = null,
+    reviewerUsedEffort: Double? = null
 ) : CreateTodoDto(
     task,
     description,
@@ -53,5 +57,7 @@ open class TodoDto(
     assignedUserId,
     isStarted,
     teamStatus,
-    lastDeveloperId
+    lastDeveloperId,
+    reviewerId,
+    reviewerUsedEffort
 )

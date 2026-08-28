@@ -133,40 +133,52 @@ class StreakService(
         }
     }
 
-    /**
-     * Wird aufgerufen, wenn ein Todo auf DONE gesetzt wird. Erhöht das Ablaufdatum.
-     */
-    fun updateStreakOnTodoCompleted(user: UserEntity, todo: TodoEntity): UserEntity {
-        // Regel: Nur Projektaufgaben (milestoneId nicht leer/null) zählen für die Team-Batterie!
-        if (todo.milestoneId.isNullOrBlank()) {
-            return user
-        }
+//    fun updateStreakOnTodoCompleted(todo: TodoEntity, currentUserId: String) {
+//        if (todo.milestoneId.isNullOrBlank()) {
+//            return
+//        }
+//
+//        // 1. Team-Projekt-Streak aktualisieren
+//        updateProjectStreakInfo(todo.milestoneId, todo.effort)
+//
+//        // 2. Aufwands-Anteile bestimmen
+//        val reviewerEffort = todo.reviewerUsedEffort
+//        val devEffort = (todo.usedEffort - reviewerEffort).coerceAtLeast(0.0)
+//
+//        // 3. Entwickler ermitteln & dessen Streak in der DB aufladen
+//        val devUserId = determineXpReceiverUserId(todo, currentUserId)
+//        if (devEffort > 0.0) {
+//            userRepository.findById(devUserId).ifPresent { devUser ->
+//                applyStreakEffortToUser(devUser, devEffort)
+//            }
+//        }
+//
+//        // 4. Reviewer-Streak in der DB aufladen (falls vorhanden & nicht Dev selbst)
+//        if (!todo.reviewerId.isNullOrBlank() && todo.reviewerId != devUserId && reviewerEffort > 0.0) {
+//            userRepository.findById(todo.reviewerId!!).ifPresent { reviewerUser ->
+//                applyStreakEffortToUser(reviewerUser, reviewerEffort)
+//            }
+//        }
+//    }
 
-        updateProjectStreakInfo(todo.milestoneId, todo.effort)
-
+    fun applyStreakEffortToUser(user: UserEntity, effortPart: Double): UserEntity {
         val now = LocalDateTime.now()
-        // Wenn die Batterie schon leer war, starten wir bei 'now', sonst bauen wir auf dem alten Puffer auf
         val baseTime = if (user.streakCoveredUntil == null || user.streakCoveredUntil!!.isBefore(now)) {
             now
         } else {
             user.streakCoveredUntil!!
         }
 
-        val addedWorkDays = todo.effort / DAILY_EFFORT_GOAL
+        val addedWorkDays = effortPart / DAILY_EFFORT_GOAL
         val newCoveredUntil = addWorkDaysSkippingWeekends(baseTime, addedWorkDays)
 
-        // Deckelung auf maximal 7 Arbeitstage in der Zukunft ab JETZT
         val maxAllowedFuture = addWorkDaysSkippingWeekends(now, MAX_PUFFER_DAYS)
-        if (newCoveredUntil.isAfter(maxAllowedFuture)) {
-            user.streakCoveredUntil = maxAllowedFuture
-        } else {
-            user.streakCoveredUntil = newCoveredUntil
-        }
+        user.streakCoveredUntil = if (newCoveredUntil.isAfter(maxAllowedFuture)) maxAllowedFuture else newCoveredUntil
 
         return userRepository.save(user)
     }
 
-    private fun updateProjectStreakInfo(milestoneId: String?, effort: Int) {
+    fun updateProjectStreakInfo(milestoneId: String?, effort: Int) {
         if (milestoneId.isNullOrBlank()) {
             return
         }
