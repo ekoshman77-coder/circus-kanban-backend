@@ -18,11 +18,14 @@ import com.backend.todo_api.dto.CreateUserDto
 import com.backend.todo_api.dto.UserApproveDto
 import com.backend.todo_api.dto.UserDto
 import com.backend.todo_api.dto.UserResponseDto
+import com.backend.todo_api.dto.UserUpdateProfileDto
 import com.backend.todo_api.exceptions.ActionForbiddenException
 import com.backend.todo_api.exceptions.UserAlreadyExistsException
+import com.backend.todo_api.exceptions.UserDeletedException
 import com.backend.todo_api.exceptions.UserNotApprovedException
 import com.backend.todo_api.exceptions.UserNotFoundException
 import com.backend.todo_api.model.ActionType
+import com.backend.todo_api.model.ResourceType
 import com.backend.todo_api.model.RoleType
 import com.backend.todo_api.model.UserSecurityResource
 import com.backend.todo_api.model.toEntity
@@ -127,13 +130,34 @@ class UserService(
         return copyToUserDto(savedEntity, UserDto())
     }
 
+    fun createUser(currentUserId: String, targetUser: CreateUserDto): UserDto {
+        val userContexts = userContextResolver.resolveContexts(currentUserId)
+
+        val canCreate = permissionService.hasPermission(
+            userContexts,
+            ActionType.CREATE,
+            UserSecurityResource(),
+            )
+
+        if (!canCreate) {
+            throw ActionForbiddenException("du darfts keine neue Users erzeugen")
+        }
+
+        return register(targetUser)
+    }
+
     @Transactional
-    fun updateUser(currentUserId: String, targetUserId: String, dto: UserDto): UserDto {
+    fun updateUser(currentUserId: String, targetUserId: String, dto: UserUpdateProfileDto): UserDto {
 
         val userEntity = userRepository.findByIdAndIsArchivedFalse(targetUserId)
             ?: throw UserNotFoundException("Benutzer mit der ID $targetUserId wurde nicht gefunden.")
 
         val userContexts = userContextResolver.resolveContexts(currentUserId)
+
+        println("🔍 [DEBUG] CurrentUserId: $currentUserId")
+        println("🔍 [DEBUG] TargetUserId: $targetUserId")
+        println("🔍 [DEBUG] Resolved Contexts: $userContexts")
+        println("🔍 [DEBUG] Target User DeptId: ${userEntity.departmentId}")
 
         val canAct = permissionService.hasPermission(
             userContexts = userContexts,
@@ -148,12 +172,6 @@ class UserService(
             throw ActionForbiddenException("du kannst Daten des Users nicht ändern")
         }
 
-        if (userEntity.isApproved != dto.isApproved) {
-            throw ResponseStatusException(
-                HttpStatus.FORBIDDEN,
-                "Sicherheitswarnung: Statusänderungen (isApproved) sind über diesen Endpunkt nicht erlaubt!"
-            )
-        }
         userEntity.firstName = dto.firstName
         userEntity.lastName = dto.lastName
         val updatedUser = userRepository.save(userEntity)
