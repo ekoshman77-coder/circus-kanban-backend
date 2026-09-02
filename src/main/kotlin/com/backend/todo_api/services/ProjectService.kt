@@ -4,6 +4,7 @@ import com.backend.todo_api.data.entity.MilestoneEntity
 import com.backend.todo_api.data.entity.ProjectEntity
 import com.backend.todo_api.data.repository.ProjectMemberRepository
 import com.backend.todo_api.data.repository.ProjectRepository
+import com.backend.todo_api.data.repository.ScopeRepository
 import com.backend.todo_api.data.repository.UserRepository
 import com.backend.todo_api.dto.CreateProjectDto
 import com.backend.todo_api.dto.ProjectDashboardStatsDTO
@@ -12,6 +13,7 @@ import com.backend.todo_api.model.ActionType
 import com.backend.todo_api.model.ProjectSecurityResource
 import com.backend.todo_api.model.ResourceType
 import com.backend.todo_api.model.ScopeType
+import com.backend.todo_api.model.toEntity
 import com.backend.todo_api.model.toSecurityResource
 import jakarta.transaction.Transactional
 import org.springframework.stereotype.Service
@@ -22,7 +24,8 @@ class ProjectService(
     private val userRepository: UserRepository,
     private val projectMemberRepository: ProjectMemberRepository,
     private val userContextResolver: UserContextResolver,
-    private val permissionService: PermissionService
+    private val permissionService: PermissionService,
+    private val scopeRepository: ScopeRepository
 ) {
 
     fun getProjectsByWithUser(userId: String?): List<ProjectDto> {
@@ -88,7 +91,7 @@ class ProjectService(
     @Transactional
     fun createProject(userId: String, dto: CreateProjectDto): ProjectDto {
         // 🏗️ Wir wandeln das DTO um (das Team bleibt dabei komplett LEER)
-        val projectEntity = convertToEntity(dto)
+        val projectEntity = convertToEntity(dto, scopeRepository = scopeRepository)
 
         val userContexts = userContextResolver.resolveContexts(userId)
 
@@ -172,7 +175,7 @@ class ProjectService(
         projectRepository.save(project)
     }
 
-    private fun convertToEntity(dto: CreateProjectDto): ProjectEntity {
+    private fun convertToEntity(dto: CreateProjectDto, scopeRepository: ScopeRepository): ProjectEntity {
         // 🌟 Wir erstellen die nackte Projekt-Entität
         val projectEntity = ProjectEntity(
             userId = dto.userId, // Das Feld merkt sich weiterhin, WER das Projekt erstellt hat (wichtig für Audits!)
@@ -181,7 +184,8 @@ class ProjectService(
             area = dto.area,
             content = dto.content,
             status = dto.status,
-            departmentId = dto.departmentId
+            departmentId = dto.departmentId,
+            scope = dto.scope.toEntity(scopeRepository)
         )
 
         // ❌ HIER WAR DIE FEHLERQUELLE: Die gesamte Schleife, die blind "DEVELOPER"

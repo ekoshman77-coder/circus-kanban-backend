@@ -34,6 +34,10 @@ class ProjectEntity(
     @Column(name = "department_id", nullable = false)
     var departmentId: String = "",
 
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "scope_id", nullable = false)
+    var scope: ScopeEntity = ScopeEntity(),
+
     @Column(name = "project_streak_covered_until")
     var projectStreakCoveredUntil: LocalDateTime? = null,
 
@@ -63,6 +67,7 @@ class ProjectEntity(
         dto.status = this.status
         dto.fullMilestones = this.milestones.map { it.toDto() }
         dto.departmentId = this.departmentId
+        dto.scope = this.scope.name
 
         // 🗑️ ENTFARNT: Keine Zuweisung mehr an ein nicht-existierendes DTO-Feld!
 

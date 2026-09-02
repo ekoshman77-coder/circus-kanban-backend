@@ -1,5 +1,7 @@
 package com.backend.todo_api.dto
 
+import com.backend.todo_api.model.ScopeType
+
 open class CreateProjectDto {
     var userId: String = ""
     var ideaId: String = ""
@@ -9,6 +11,7 @@ open class CreateProjectDto {
     var status: String = "Calculation" // 'Calculation' | 'Active' | 'Zip'
     var milestones: List<CreateMilestoneDto> = emptyList()
     var departmentId: String = ""
+    var scope: ScopeType = ScopeType.DEPARTMENT
     constructor()
 }
 

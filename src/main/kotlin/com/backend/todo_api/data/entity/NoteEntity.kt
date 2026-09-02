@@ -3,7 +3,10 @@ package com.backend.todo_api.data.entity
 import com.backend.todo_api.dto.NoteDto
 import jakarta.persistence.Column
 import jakarta.persistence.Entity
+import jakarta.persistence.FetchType
 import jakarta.persistence.Id
+import jakarta.persistence.JoinColumn
+import jakarta.persistence.ManyToOne
 import jakarta.persistence.Table
 import java.util.UUID
 
@@ -42,16 +45,9 @@ class NoteEntity(
     var weatherCode: Int? = null,
 
     @Column(name = "department_id", nullable = true)
-    var departmentId: String? = null
-) {
-    fun updateFromDto(dto: NoteDto) {
-        this.title = dto.title
-        this.content = dto.content
-        this.colorType = dto.colorType
-        this.tag = dto.tag
-        this.isInCalculation = dto.isInCalculation
-        this.temperature = dto.temperature
-        this.weatherCode = dto.weatherCode
-        this.departmentId = dto.departmentId
-    }
-}
+    var departmentId: String? = null,
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "scope_id", nullable = false)
+    var scope: ScopeEntity = ScopeEntity()
+)

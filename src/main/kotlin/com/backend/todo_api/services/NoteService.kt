@@ -2,6 +2,7 @@ package com.backend.todo_api.services
 
 import com.backend.todo_api.data.entity.NoteEntity
 import com.backend.todo_api.data.repository.NoteRepository
+import com.backend.todo_api.data.repository.ScopeRepository
 import com.backend.todo_api.data.repository.UserRepository
 import com.backend.todo_api.dto.CreateNoteDto
 import com.backend.todo_api.dto.NoteDto
@@ -30,7 +31,8 @@ class NoteService(
     private val noteRepository: NoteRepository,
     private val userRepository: UserRepository,
     private val userContextResolver: UserContextResolver,
-    private val permissionService: PermissionService
+    private val permissionService: PermissionService,
+    private val scopeRepository: ScopeRepository
     )
 {
 
@@ -40,7 +42,7 @@ class NoteService(
         }
 
         val userContexts = userContextResolver.resolveContexts(user)
-        val noteEntity = noteDto.toNewEntity()
+        val noteEntity = noteDto.toNewEntity( scopeRepository )
         // Da jeder aktive User eine Abteilung HABEN MUSS, prüfen wir direkt gegen user.departmentId!
         val canCreate = permissionService.hasPermission(
             userContexts = userContexts,
@@ -154,9 +156,18 @@ class NoteService(
             throw SecurityException("Zugriff verweigert: Du hast keine Berechtigung, diese Notiz zu bearbeiten.")
         }
 
-        // Felder aktualisieren
+        // 🟢 Alle relevanten Felder aktualisieren
         note.title = updatedDto.title
         note.content = updatedDto.content
+        note.colorType = updatedDto.colorType
+        note.tag = updatedDto.tag
+        note.isInCalculation = updatedDto.isInCalculation
+
+        // 🟢 Scope-Entities neu auflösen und zuweisen (für den Promote auf COMPANY)
+        val targetScope = scopeRepository.findByName(updatedDto.scope)
+            ?: throw IllegalArgumentException("Scope ${updatedDto.scope} nicht gefunden.")
+
+        note.scope = targetScope
 
         return noteRepository.save(note).toDto()
     }
