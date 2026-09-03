@@ -31,7 +31,9 @@ enum class ActionType {
     UPDATE,
     DELETE,
     EXECUTE,
-    INVITE
+    INVITE,
+    PROMOTE,
+    REVERT
 }
 
 fun ActionType.toEntity(actionRepository: ActionRepository): ActionEntity {

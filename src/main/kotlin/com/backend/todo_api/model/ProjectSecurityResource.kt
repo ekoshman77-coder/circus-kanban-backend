@@ -28,7 +28,7 @@ fun ProjectEntity.toSecurityResource(): ProjectSecurityResource {
     return ProjectSecurityResource(
         id = this.id,
         departmentId = this.departmentId,
-        memberUserIds = this.teamMemberships.map { it.user.id }.toSet()
-        // ownerUserId = this.owner?.id
+        memberUserIds = this.teamMemberships.map { it.user.id }.toSet(),
+        ownerUserId = this.userId
     )
 }

@@ -4,6 +4,7 @@ import com.backend.todo_api.data.entity.NoteEntity
 import org.springframework.data.jpa.repository.JpaRepository
 import org.springframework.data.jpa.repository.Query
 import org.springframework.data.repository.query.Param
+import java.util.Optional
 
 interface NoteRepository: JpaRepository<NoteEntity, String> {
 
@@ -36,4 +37,5 @@ interface NoteRepository: JpaRepository<NoteEntity, String> {
     WHERE p.id = :projectId AND n.isArchived = false
 """)
     fun findNotesByProjectId(@Param("projectId") projectId: String): List<NoteEntity>
+    fun findByIdAndIsArchivedFalse(noteId: String): NoteEntity?
 }

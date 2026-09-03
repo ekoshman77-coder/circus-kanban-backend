@@ -83,4 +83,9 @@ class GlobalExceptionHandler {
         ResponseEntity.status(HttpStatus.NOT_FOUND)
             .body(ErrorResponse(ErrorCode.INVALID_DATA, ex.message))
 
+    @ExceptionHandler(NoteNotFoundException::class)
+    fun handleNoteNotFound(ex: NoteNotFoundException) =
+        ResponseEntity.status(HttpStatus.NOT_FOUND)
+            .body(ErrorResponse(ErrorCode.NOTE_NOT_FOUND, ex.message))
+
 }

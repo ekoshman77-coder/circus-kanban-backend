@@ -142,28 +142,48 @@ class PermissionInitializer(
         // ADMIN & ADMIN_HEAD: READ in Company
         savePermissionIfNotExists(RoleType.ADMIN, ResourceType.NOTE, ActionType.READ, ScopeType.COMPANY)
         savePermissionIfNotExists(RoleType.ADMIN_HEAD, ResourceType.NOTE, ActionType.READ, ScopeType.COMPANY)
+
+        // ADMIN & ADMIN_HEAD: READ, PROMOTE, REVERT in Company
+        listOf(ActionType.READ, ActionType.PROMOTE, ActionType.REVERT).forEach { action ->
+            savePermissionIfNotExists(RoleType.ADMIN, ResourceType.NOTE, action, ScopeType.COMPANY)
+            savePermissionIfNotExists(RoleType.ADMIN_HEAD, ResourceType.NOTE, action, ScopeType.COMPANY)
+        }
+
+        listOf(RoleType.ADMIN, RoleType.ADMIN_HEAD).forEach { role ->
+            savePermissionIfNotExists(role, ResourceType.NOTE, ActionType.EXECUTE, ScopeType.COMPANY)
+        }
+        listOf(RoleType.MEMBER, RoleType.DEPARTMENT_HEAD).forEach { role ->
+            savePermissionIfNotExists(role, ResourceType.NOTE, ActionType.EXECUTE, ScopeType.DEPARTMENT)
+        }
     }
 
     private fun initProjectPermissions() {
+        val projectResource = resourceRepository.findByName(ResourceType.PROJECT)!!
+        if (rolePermissionRepository.existsByResource(projectResource)) return
 
-        // MEMBER: READ, CREATE in Department
+        // OWNER: Volle Bearbeitungsrechte auf eigene Resource (ohne DELETE)
+        listOf(ActionType.READ, ActionType.UPDATE, ActionType.EXECUTE, ActionType.CREATE, ActionType.INVITE).forEach { action ->
+            savePermissionIfNotExists(RoleType.OWNER, ResourceType.PROJECT, action, ScopeType.RESOURCE)
+        }
+
+        // PROJECT_MANAGER & DEVELOPER: Projektarbeit im PROJECT-Scope
+        listOf(ActionType.CREATE, ActionType.READ, ActionType.UPDATE, ActionType.EXECUTE, ActionType.INVITE).forEach { action ->
+            savePermissionIfNotExists(RoleType.PROJECT_MANAGER, ResourceType.PROJECT, action, ScopeType.PROJECT)
+            savePermissionIfNotExists(RoleType.DEVELOPER, ResourceType.PROJECT, action, ScopeType.PROJECT)
+        }
+
+        // DEPARTMENT_HEAD: Verwaltung & Löschen auf Abteilungs-Ebene
+        listOf(ActionType.READ, ActionType.DELETE, ActionType.CREATE).forEach { action ->
+            savePermissionIfNotExists(RoleType.DEPARTMENT_HEAD, ResourceType.PROJECT, action, ScopeType.DEPARTMENT)
+        }
+
+        // MEMBER: Lesen & Erstellen in der Abteilung
         listOf(ActionType.READ, ActionType.CREATE).forEach { action ->
             savePermissionIfNotExists(RoleType.MEMBER, ResourceType.PROJECT, action, ScopeType.DEPARTMENT)
         }
 
-        // 🎯 DEVELOPER: Kann Projekte in der Abteilung anlegen/sehen UND das eigene Projekt lesen ({DEVELOPER, PROJECT, READ, PROJECT})
-        listOf(ActionType.READ, ActionType.CREATE).forEach { action ->
-            savePermissionIfNotExists(RoleType.DEVELOPER, ResourceType.PROJECT, action, ScopeType.DEPARTMENT)
-        }
-        savePermissionIfNotExists(RoleType.DEVELOPER, ResourceType.PROJECT, ActionType.READ, ScopeType.PROJECT)
-
-        // PROJECT_MANAGER: Full Access in Project
-        listOf(ActionType.READ, ActionType.CREATE, ActionType.UPDATE, ActionType.DELETE).forEach { action ->
-            savePermissionIfNotExists(RoleType.PROJECT_MANAGER, ResourceType.PROJECT, action, ScopeType.PROJECT)
-        }
-
-        // ADMIN & ADMIN_HEAD: Full Access in Company für Projekt-Stammdaten
-        listOf(ActionType.READ, ActionType.CREATE, ActionType.UPDATE, ActionType.DELETE).forEach { action ->
+        // ADMIN & ADMIN_HEAD: Governance & Löschen auf Firmen-Ebene
+        listOf(ActionType.READ, ActionType.CREATE, ActionType.DELETE).forEach { action ->
             savePermissionIfNotExists(RoleType.ADMIN, ResourceType.PROJECT, action, ScopeType.COMPANY)
             savePermissionIfNotExists(RoleType.ADMIN_HEAD, ResourceType.PROJECT, action, ScopeType.COMPANY)
         }

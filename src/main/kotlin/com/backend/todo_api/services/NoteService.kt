@@ -8,28 +8,24 @@ import com.backend.todo_api.dto.CreateNoteDto
 import com.backend.todo_api.dto.NoteDto
 import com.backend.todo_api.dto.toDto
 import com.backend.todo_api.dto.toNewEntity
+import com.backend.todo_api.exceptions.ActionForbiddenException
+import com.backend.todo_api.exceptions.NoteNotFoundException
 import com.backend.todo_api.model.ActionType
 import com.backend.todo_api.model.AiContextType
-import com.backend.todo_api.model.FocusType
-import com.backend.todo_api.model.ResourceType
 import com.backend.todo_api.model.ScopeType
 import com.backend.todo_api.providers.AiGlobalDataProvider
-import com.backend.todo_api.validation.validateUserExists
 import jakarta.transaction.Transactional
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
-import org.springframework.http.HttpStatus
 import org.springframework.stereotype.Service
-import org.springframework.web.server.ResponseStatusException
-import java.security.Principal
 import com.backend.todo_api.exceptions.UserDeletedException
 import com.backend.todo_api.model.NoteSecurityResource
+import com.backend.todo_api.model.toEntity
 import com.backend.todo_api.model.toSecurityResource
 
 @Service
 class NoteService(
     private val noteRepository: NoteRepository,
-    private val userRepository: UserRepository,
     private val userContextResolver: UserContextResolver,
     private val permissionService: PermissionService,
     private val scopeRepository: ScopeRepository
@@ -37,44 +33,19 @@ class NoteService(
 {
 
     fun createNote(userId: String, noteDto: CreateNoteDto): NoteDto {
-        val user = userRepository.findById(userId).orElseThrow {
-            UserDeletedException("User $userId nicht gefunden.")
-        }
-
-        val userContexts = userContextResolver.resolveContexts(user)
         val noteEntity = noteDto.toNewEntity( scopeRepository )
         // Da jeder aktive User eine Abteilung HABEN MUSS, prüfen wir direkt gegen user.departmentId!
-        val canCreate = permissionService.hasPermission(
-            userContexts = userContexts,
-            resource = noteEntity.toSecurityResource(),
-            action = ActionType.CREATE
-        )
-
-        if (!canCreate) {
-            throw SecurityException("Zugriff verweigert: Du darfst keine Notizen erstellen.")
-        }
+        checkPermission(userId, noteEntity, ActionType.CREATE,"Zugriff verweigert: Du darfst keine Notizen erstellen.")
 
         val created = noteRepository.save(noteEntity).toDto()
         return created
     }
 
     fun getNoteById(userId: String, noteId: String): NoteDto {
-        val note = noteRepository.findById(noteId).orElseThrow {
-            IllegalArgumentException("Notiz $noteId nicht gefunden.")
-        }
+        val note = noteRepository.findByIdAndIsArchivedFalse(noteId)
+            ?:throw IllegalArgumentException("Notiz $noteId nicht gefunden.")
 
-        val userContexts = userContextResolver.resolveContexts(userId)
-
-        // 1 Zeile Clean-Architecture-Prüfung!
-        val canRead = permissionService.hasPermission(
-            userContexts = userContexts,
-            action = ActionType.READ,
-            resource = note.toSecurityResource()
-        )
-
-        if (!canRead) {
-            throw SecurityException("Zugriff verweigert: Du hast keine Berechtigung, diese Notiz zu lesen.")
-        }
+        checkPermission(userId, note, ActionType.READ, "Zugriff verweigert: Du hast keine Berechtigung, diese Notiz zu lesen.")
 
         return note.toDto()
     }
@@ -142,19 +113,7 @@ class NoteService(
             IllegalArgumentException("Notiz $noteId nicht gefunden.")
         }
 
-        val userContexts = userContextResolver.resolveContexts(userId)
-
-        // Prüfen: Darf der User diese Notiz bearbeiten?
-        // Wir prüfen gegen den Besitzer der Notiz (note.userId)
-        val canUpdate = permissionService.hasPermission(
-            userContexts = userContexts,
-            resource = note.toSecurityResource(),
-            action = ActionType.UPDATE,
-        )
-
-        if (!canUpdate) {
-            throw SecurityException("Zugriff verweigert: Du hast keine Berechtigung, diese Notiz zu bearbeiten.")
-        }
+        checkPermission(userId, note, ActionType.UPDATE,"Zugriff verweigert: Du hast keine Berechtigung, diese Notiz zu bearbeiten.")
 
         // 🟢 Alle relevanten Felder aktualisieren
         note.title = updatedDto.title
@@ -162,12 +121,6 @@ class NoteService(
         note.colorType = updatedDto.colorType
         note.tag = updatedDto.tag
         note.isInCalculation = updatedDto.isInCalculation
-
-        // 🟢 Scope-Entities neu auflösen und zuweisen (für den Promote auf COMPANY)
-        val targetScope = scopeRepository.findByName(updatedDto.scope)
-            ?: throw IllegalArgumentException("Scope ${updatedDto.scope} nicht gefunden.")
-
-        note.scope = targetScope
 
         return noteRepository.save(note).toDto()
     }
@@ -178,20 +131,53 @@ class NoteService(
             IllegalArgumentException("Notiz $noteId nicht gefunden.")
         }
 
-        val userContexts = userContextResolver.resolveContexts(userId)
-
-        val canDelete = permissionService.hasPermission(
-            userContexts = userContexts,
-            resource = note.toSecurityResource(),
-            action = ActionType.DELETE,
-        )
-
-        if (!canDelete) {
-            throw SecurityException("Zugriff verweigert: Du hast keine Berechtigung, diese Notiz zu löschen.")
-        }
+        checkPermission(userId, note, ActionType.DELETE, "Zugriff verweigert: Du hast keine Berechtigung, diese Notiz zu löschen.")
 
         note.isArchived = true
         noteRepository.save(note)
+    }
+
+    @Transactional
+    fun changeNoteScope(userId: String, noteId: String, action: ActionType): NoteDto {
+        val note = noteRepository.findByIdAndIsArchivedFalse(noteId)
+                    ?: throw(NoteNotFoundException("note existiert nicht oder war gelöscht"))
+
+        checkPermission(userId, note, action, "Du darfst scope der Note nicht ändern")
+        note.scope = if (action == ActionType.PROMOTE) {
+            ScopeType.COMPANY.toEntity(scopeRepository)
+        } else {
+            ScopeType.DEPARTMENT.toEntity(scopeRepository)
+        }
+        val saved = noteRepository.save(note)
+        return saved.toDto()
+    }
+
+    @Transactional
+    fun changeStatus(userId: String, noteId: String, newStatus: Boolean): NoteDto {
+        val note = noteRepository.findByIdAndIsArchivedFalse(noteId)
+            ?: throw(NoteNotFoundException("note existiert nicht oder war gelöscht"))
+
+        checkPermission(userId, note, ActionType.EXECUTE, "Du hast keine Berechtigung, den Status dieser Note zu ändern")
+
+        note.isInCalculation = newStatus
+        val saved = noteRepository.save(note)
+
+        return saved.toDto()
+    }
+
+    private fun checkPermission(userId: String, note: NoteEntity, action: ActionType, exceptionMessage: String) {
+
+        val userContexts = userContextResolver.resolveContexts(userId)
+
+        val canAct = permissionService.hasPermission(
+            userContexts,
+            action = action,
+            resource = note.toSecurityResource()
+        )
+
+        if (!canAct) {
+            throw ActionForbiddenException(exceptionMessage)
+        }
     }
 
     fun getGlobalTrainingPairs(): List<Pair<String, String>> {
