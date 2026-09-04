@@ -1,6 +1,7 @@
 package com.backend.todo_api.data.entity
 
 import com.backend.todo_api.dto.ProjectDto
+import com.backend.todo_api.dto.ProjectMemberDto
 import com.backend.todo_api.dto.UserDto
 import jakarta.persistence.*
 import java.time.LocalDateTime
@@ -56,23 +57,6 @@ class ProjectEntity(
     }
 
     // ✨ Schicke Konvertierungsmethode -> Jetzt angepasst an teamMemberships!
-    fun toDto(): ProjectDto {
-        val dto = ProjectDto()
-        dto.id = this.id
-        dto.userId = this.userId
-        dto.ideaId = this.ideaId
-        dto.title = this.title
-        dto.area = this.area
-        dto.content = this.content
-        dto.status = this.status
-        dto.fullMilestones = this.milestones.map { it.toDto() }
-        dto.departmentId = this.departmentId
-        dto.scope = this.scope.name
-
-        // 🗑️ ENTFARNT: Keine Zuweisung mehr an ein nicht-existierendes DTO-Feld!
-
-        return dto
-    }
 
     fun addTeamMember(user: UserEntity, roleEntity: RoleEntity) {
         val alreadyMember = teamMemberships.any { it.user.id == user.id }

@@ -9,6 +9,7 @@ import com.backend.todo_api.data.repository.UserRepository
 import com.backend.todo_api.dto.CreateProjectDto
 import com.backend.todo_api.dto.ProjectDashboardStatsDTO
 import com.backend.todo_api.dto.ProjectDto
+import com.backend.todo_api.dto.ProjectMemberDto
 import com.backend.todo_api.model.ActionType
 import com.backend.todo_api.model.ProjectSecurityResource
 import com.backend.todo_api.model.ResourceType
@@ -25,7 +26,8 @@ class ProjectService(
     private val projectMemberRepository: ProjectMemberRepository,
     private val userContextResolver: UserContextResolver,
     private val permissionService: PermissionService,
-    private val scopeRepository: ScopeRepository
+    private val scopeRepository: ScopeRepository,
+    private val userService: UserService
 ) {
 
     fun getProjectsByWithUser(userId: String?): List<ProjectDto> {
@@ -175,10 +177,36 @@ class ProjectService(
         projectRepository.save(project)
     }
 
+    private fun ProjectEntity.toDto(): ProjectDto {
+        val dto = ProjectDto()
+        dto.id = this.id
+        dto.userId = this.userId
+        dto.ideaId = this.ideaId
+        dto.title = this.title
+        dto.area = this.area
+        dto.content = this.content
+        dto.status = this.status
+        dto.departmentId = this.departmentId
+        dto.scope = ScopeType.valueOf(this.scope.name.name) // ScopeType Enum
+
+        // ✨ Unified milestones list
+        dto.milestones = this.milestones.map { it.toDto() }
+
+        // ✨ Teammitglieder-Mapping mit UserService
+        dto.teamMembers = this.teamMemberships.map { membership ->
+            ProjectMemberDto(
+                user = userService.entityToUserResponseDto(membership.user, null),
+                projectRole = membership.role.name // ✨ membership.role.name ist bereits ein RoleType!
+            )
+        }
+
+        return dto
+    }
+
     private fun convertToEntity(dto: CreateProjectDto, scopeRepository: ScopeRepository): ProjectEntity {
-        // 🌟 Wir erstellen die nackte Projekt-Entität
+        // 1. Grunddaten der Projekt-Entität erzeugen
         val projectEntity = ProjectEntity(
-            userId = dto.userId, // Das Feld merkt sich weiterhin, WER das Projekt erstellt hat (wichtig für Audits!)
+            userId = dto.userId,
             ideaId = dto.ideaId,
             title = dto.title,
             area = dto.area,
@@ -188,10 +216,7 @@ class ProjectService(
             scope = dto.scope.toEntity(scopeRepository)
         )
 
-        // ❌ HIER WAR DIE FEHLERQUELLE: Die gesamte Schleife, die blind "DEVELOPER"
-        // eingetragen hat, wird komplett gelöscht. Das Team ist beim Erstellen leer!
-
-        // 🎯 Meilensteine umwandeln (Das bleibt so, falls beim Erstellen direkt Meilensteine mitkommen)
+        // 2. Falls beim Erstellen schon Meilensteine übergeben wurden (CreateMilestoneDto -> MilestoneEntity)
         dto.milestones.forEach { mDto ->
             val assignedUserEntity = mDto.assignedUserId?.let {
                 userRepository.findById(it).orElse(null)
@@ -204,8 +229,10 @@ class ProjectService(
                 orderIndex = mDto.orderIndex,
                 assignedUser = assignedUserEntity
             )
-            projectEntity.addMilestone(mEntity)
+            projectEntity.addMilestone(mEntity) // Verbindet Meilenstein & Projekt bidirektional
         }
+
+        // Hinweis: Das Team bleibt beim Erstellen leer, da Mitglieder erst später hinzugefügt werden.
 
         return projectEntity
     }

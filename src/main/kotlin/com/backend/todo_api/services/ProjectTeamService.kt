@@ -63,7 +63,7 @@ class ProjectTeamService(
 
             ProjectMemberDto(
                 user = userService.entityToUserResponseDto(user, coffeeAccount),
-                projectRole = membership.role.name?.name ?: "NONE"
+                projectRole = membership.role.name
             )
         }
     }
@@ -138,7 +138,7 @@ class ProjectTeamService(
             val coffeeAccount = coffeeAccountRepository.findById(user.id).orElse(null)
             ProjectMemberDto(
                 user = userService.entityToUserResponseDto(user, coffeeAccount),
-                projectRole = "NONE"
+                projectRole = RoleType.DEVELOPER
             )
         }
     }
@@ -184,7 +184,7 @@ class ProjectTeamService(
 
         return ProjectMemberDto(
             user = userService.entityToUserResponseDto(user, coffeeAccount),
-            projectRole = role.name
+            projectRole = role
         )
     }
 
@@ -281,7 +281,7 @@ class ProjectTeamService(
             val coffeeAccount = coffeeAccountRepository.findById(user.id).orElse(null)
             ProjectMemberDto(
                 user = userService.entityToUserResponseDto(user, coffeeAccount),
-                projectRole = "NONE"
+                projectRole = RoleType.DEVELOPER
             )
         }
     }
