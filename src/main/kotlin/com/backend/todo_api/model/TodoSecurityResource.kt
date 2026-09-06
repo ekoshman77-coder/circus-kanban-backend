@@ -1,7 +1,5 @@
 package com.backend.todo_api.model
 
-import com.backend.todo_api.services.UserContext
-
 data class TodoSecurityResource(
     val id: String?,                   // null bei neuem Todo
     val ownerUserId: String,           // userId des Erstellers

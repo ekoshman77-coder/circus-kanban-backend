@@ -38,7 +38,7 @@ class TodoService (
     private val permissionService: PermissionService,
     private val userContextResolver: UserContextResolver,
 
-) {
+    ) {
     // 1. NEUERSTELLUNG: Wandelt CreateTodoDto in eine neue Entity um und initialisiert versteckte Felder
     private fun mapToNewEntity(dto: CreateTodoDto): TodoEntity {
         return TodoEntity(

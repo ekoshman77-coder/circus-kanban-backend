@@ -1,26 +1,13 @@
 package com.backend.todo_api.services
 
 import com.backend.todo_api.constants.AppConstants
-import com.backend.todo_api.data.entity.RoleEntity
-import com.backend.todo_api.data.entity.ScopeEntity
 import com.backend.todo_api.data.repository.DepartmentRepository
 import com.backend.todo_api.data.repository.RolePermissionRepository
-import com.backend.todo_api.dto.MasterDataResponseDto
 import com.backend.todo_api.model.*
 
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 
-data class UserContext(
-    val scope: ScopeEntity,
-    val scopeInstanceId: String?,
-    val role: RoleEntity
-)
-
-data class ResourceContext(
-    val resource: ResourceType,
-    val instanceId: String?
-)
 
 @Service
 class PermissionService(
@@ -28,36 +15,45 @@ class PermissionService(
     private val departmentRepository: DepartmentRepository
 ) {
 
-    private fun isUserAdmin(departmentId: String?): Boolean {
-        if (departmentId == null) return false
-        val adminDept = departmentRepository.findByNameIgnoreCase(AppConstants.ADMIN_DEPARTMENT_NAME)
-        return adminDept?.id == departmentId
-    }
-
-    /**
-     * Aufgabe A: Die Ja/Nein-Axt für Mutationen (CREATE, WRITE, DELETE, READ auf Einzelobjekte)
-     */
-    @Transactional(readOnly = true)
     fun hasPermission(
         userContexts: List<UserContext>,
         action: ActionType,
-        resource: VisitableResource
+        resource: VisitableResource,
     ): Boolean {
-        val permissions = rolePermissionRepository.findByActionNameAndResourceName(
-            action,
-            resource.resourceType
+        if (userContexts.isEmpty()) return false
+
+        // 1. Rollen aus den übergebenen Kontexten extrahieren
+        val userRoleNames = userContexts.map { it.role.name }
+
+        // 2. Passende Berechtigungs-Regeln aus DB laden
+        val matchingPermissions = rolePermissionRepository.findByRoleNameInAndActionNameAndResourceName(
+            roleNames = userRoleNames,
+            actionName = action,
+            resourceName = resource.resourceType
         )
 
-        for (userContext in userContexts) {
-            val hasMatchingPermission = permissions.any { perm ->
-                perm.role.id == userContext.role.id && perm.targetScope.name == userContext.scope.name
-            }
+        if (matchingPermissions.isEmpty()) return false
 
-            if (hasMatchingPermission && resource.matchesScope(userContext)) {
-                return true
+        // 3. Evaluierung gegen die bereitgestellten Kontexte & VisitableResource-Scope
+        return userContexts.any { context ->
+            // A) Stimmt die Instanz/Scope-Ebene der konkreten Ressource überein?
+            val scopeMatches = resource.matchesScope(context)
+
+            if (!scopeMatches) return@any false
+
+            // B) Passt dazu eine Berechtigung aus der Datenbank?
+            matchingPermissions.any { permission ->
+                val matchesRole = permission.role.id == context.role.id
+                val matchesScope = permission.targetScope.id == context.scope.id
+
+                // Spezialisierungs-Matching:
+                val matchesSpecialization = when (val permSpec = permission.departmentSpecialization) {
+                    null -> true
+                    else -> permSpec.id == context.specialization?.id
+                }
+
+                matchesRole && matchesScope && matchesSpecialization
             }
         }
-
-        return false
     }
 }

@@ -1,6 +1,7 @@
 package com.backend.todo_api.data.repository
 
 import com.backend.todo_api.data.entity.ActionEntity
+import com.backend.todo_api.data.entity.DepartmentSpecializationEntity
 import com.backend.todo_api.data.entity.ResourceEntity
 import com.backend.todo_api.data.entity.RoleEntity
 import com.backend.todo_api.data.entity.RolePermissionEntity
@@ -31,4 +32,19 @@ interface RolePermissionRepository : JpaRepository<RolePermissionEntity, String>
         actionName: ActionType,
         targetScopeName: ScopeType
     ): Boolean
+
+    fun existsByRoleAndResourceAndActionAndTargetScopeAndDepartmentSpecialization(
+        role: RoleEntity?,
+        resource: ResourceEntity,
+        action: ActionEntity,
+        scope: ScopeEntity,
+        specialization: DepartmentSpecializationEntity?
+    ): Boolean
+
+    fun findByResourceAndActionAndTargetScopeAndDepartmentSpecialization(
+        resource: ResourceEntity,
+        action: ActionEntity,
+        scope: ScopeEntity,
+        spec: DepartmentSpecializationEntity?
+    ): List<RolePermissionEntity>
 }

@@ -29,6 +29,7 @@ import com.backend.todo_api.model.ResourceType
 import com.backend.todo_api.model.RoleType
 import com.backend.todo_api.model.UserSecurityResource
 import com.backend.todo_api.model.toEntity
+import com.backend.todo_api.services.UserContextResolver
 import jakarta.transaction.Transactional
 import org.springframework.http.HttpStatus
 import org.springframework.stereotype.Service
@@ -94,7 +95,7 @@ class UserService(
             println("👑 Ur-Admin Registrierung erkannt! Gewählte Abteilung: ${AppConstants.ADMIN_DEPARTMENT_NAME}.")
 
             // 👑 Der Ur-Admin bekommt die Super-Admin Rolle!
-            RoleType.ADMIN_HEAD.toEntity(roleRepository)
+            RoleType.DEPARTMENT_HEAD.toEntity(roleRepository)
         } else {
             // Normale User starten als MEMBER
             RoleType.MEMBER.toEntity(roleRepository)

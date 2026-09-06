@@ -10,9 +10,8 @@ import com.backend.todo_api.dto.CreateProjectDto
 import com.backend.todo_api.dto.ProjectDashboardStatsDTO
 import com.backend.todo_api.dto.ProjectDto
 import com.backend.todo_api.dto.ProjectMemberDto
+import com.backend.todo_api.exceptions.ActionForbiddenException
 import com.backend.todo_api.model.ActionType
-import com.backend.todo_api.model.ProjectSecurityResource
-import com.backend.todo_api.model.ResourceType
 import com.backend.todo_api.model.ScopeType
 import com.backend.todo_api.model.toEntity
 import com.backend.todo_api.model.toSecurityResource
@@ -170,7 +169,7 @@ class ProjectService(
         )
 
         if (!canDelete) {
-            throw SecurityException("Zugriff verweigert: Du hast keine Berechtigung, dieses Projekt zu löschen.")
+            throw ActionForbiddenException("Zugriff verweigert: Du hast keine Berechtigung, dieses Projekt zu löschen.")
         }
         // 🎯 SOFT DELETE statt hard delete! Die KI behält ihre Meilenstein-Daten!
         project.status = "Zip"

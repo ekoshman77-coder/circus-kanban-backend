@@ -11,8 +11,6 @@ import com.backend.todo_api.dto.StreakInfoDto
 import com.backend.todo_api.model.ActionType
 import com.backend.todo_api.model.toSecurityResource
 import org.springframework.stereotype.Service
-import java.math.BigDecimal
-import java.math.RoundingMode
 import java.time.DayOfWeek
 import java.time.LocalDateTime
 import java.time.ZoneId

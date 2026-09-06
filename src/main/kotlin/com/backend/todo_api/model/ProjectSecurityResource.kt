@@ -1,7 +1,6 @@
 package com.backend.todo_api.model
 
 import com.backend.todo_api.data.entity.ProjectEntity
-import com.backend.todo_api.services.UserContext
 
 data class ProjectSecurityResource(
     val id: String,

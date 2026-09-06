@@ -1,7 +1,5 @@
 package com.backend.todo_api.model
 
-import com.backend.todo_api.services.UserContext
-
 data class UserSecurityResource(
     val targetUserId: String? = null,
     val departmentId: String? = null,
