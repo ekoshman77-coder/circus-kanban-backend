@@ -1,6 +1,7 @@
 package com.backend.todo_api.data.entity
 
 import jakarta.persistence.*
+import java.time.LocalDateTime
 import java.util.UUID
 
 @Entity
@@ -30,6 +31,22 @@ class UserEntity(
 
     @Column(name = "level_title", nullable = false)
     var levelTitle: String = "",
+
+    @Column(name = "streak_covered_until")
+    var streakCoveredUntil: LocalDateTime? = null,
+
+    @Column(name = "department_id", nullable = true)
+    var departmentId: String? = null,
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "department_role_id")
+    var departmentRole: RoleEntity? = null,
+
+    @Column(name = "is_approved", nullable = false)
+    var isApproved: Boolean = false,
+
+    @Column(name = "is_archived", nullable = false, columnDefinition = "boolean default false")
+    var isArchived: Boolean = false,
 
     @OneToMany(mappedBy = "user", cascade = [CascadeType.ALL], orphanRemoval = true)
     var projectMemberships: MutableList<ProjectMemberEntity> = mutableListOf()

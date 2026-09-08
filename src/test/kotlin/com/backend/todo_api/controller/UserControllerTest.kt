@@ -1,7 +1,7 @@
 package com.backend.todo_api.controller
 
 import com.backend.todo_api.dto.CreateUserDto
-import com.backend.todo_api.services.UserAlreadyExistsException
+import com.backend.todo_api.exceptions.UserAlreadyExistsException
 import com.backend.todo_api.services.UserService
 import com.fasterxml.jackson.databind.ObjectMapper
 import io.mockk.every

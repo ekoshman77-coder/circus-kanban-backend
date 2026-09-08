@@ -2,6 +2,7 @@ package com.backend.todo_api.controller
 
 import com.backend.todo_api.dto.IgnoredMilestonesRequest
 import com.backend.todo_api.dto.MilestoneSuggestionsResponse
+import com.backend.todo_api.dto.TrackMilestoneRequest
 import com.backend.todo_api.services.ProjectSplitterService
 import org.springframework.http.ResponseEntity
 import org.springframework.web.bind.annotation.*
@@ -37,6 +38,7 @@ class ProjectSplitterController(
     ): ResponseEntity<Unit> {
         projectSplitterService.trackMilestoneSelection(
             projectTitle = request.projectTitle,
+            projectArea = request.area,
             milestoneTitle = request.milestoneTitle,
             userId = request.userId
         )
@@ -52,6 +54,7 @@ class ProjectSplitterController(
     ): ResponseEntity<Unit> {
         projectSplitterService.trackMilestoneDegradation(
             projectTitle = request.projectTitle,
+            projectArea = request.area,
             milestoneTitle = request.milestoneTitle,
             userId = request.userId
         )
@@ -64,6 +67,7 @@ class ProjectSplitterController(
         // Wir nehmen alles direkt aus dem sauberen Request-Objekt
         projectSplitterService.trackMultipleMilestoneDegradations(
             projectTitle = request.projectTitle,
+            projectArea = request.area,
             milestoneTitles = request.milestoneTitles,
             userId = request.userId
         )
@@ -72,11 +76,3 @@ class ProjectSplitterController(
     }
 }
 
-/**
- * Kleines Datentransfer-Objekt (DTO) für die POST-Requests
- */
-data class TrackMilestoneRequest(
-    val projectTitle: String,
-    val milestoneTitle: String,
-    val userId: String
-)

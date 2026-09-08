@@ -6,13 +6,26 @@ spring:
   jpa:
     hibernate:
       ddl-auto: update
+  session:
+    jdbc:
+      initialize-schema: always
+      platform: postgresql
+      table-name: spring_session
+
+server:
+  servlet:
+    session:
+      timeout: 7d
+      cookie:
+        max-age: 7d
+
 bucket4j:
-  enabled: true
+  enabled: false
   filters:
     - name: rate-limit-filter
-      url: /api/.* # ⏱️ Schützt alle Pfade, die mit /api/ beginnen
+      url: /api/.*
       rate-limits:
         - bandwidths:
-            - capacity: 60       # Maximal 60 Anfragen
+            - capacity: 10
               time: 1
               unit: minutes

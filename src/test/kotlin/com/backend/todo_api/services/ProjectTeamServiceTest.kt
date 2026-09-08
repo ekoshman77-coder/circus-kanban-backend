@@ -1,85 +1,124 @@
 package com.backend.todo_api.services
 
 import com.backend.todo_api.data.entity.ProjectEntity
+import com.backend.todo_api.data.entity.RoleEntity
 import com.backend.todo_api.data.entity.UserEntity
 import com.backend.todo_api.data.repository.CoffeeAccountRepository
+import com.backend.todo_api.data.repository.DepartmentRepository
 import com.backend.todo_api.data.repository.ProjectMemberRepository
 import com.backend.todo_api.data.repository.ProjectRepository
+import com.backend.todo_api.data.repository.RoleRepository
 import com.backend.todo_api.data.repository.UserRepository
+import com.backend.todo_api.dto.UserResponseDto
+import com.backend.todo_api.exceptions.ActionForbiddenException
 import com.backend.todo_api.exceptions.ProjectNotFoundException
 import com.backend.todo_api.exceptions.TeamValidationException
+import com.backend.todo_api.exceptions.UserNotFoundException
+import com.backend.todo_api.model.ActionType
+import com.backend.todo_api.model.RoleType
+import io.mockk.every
+import io.mockk.just
+import io.mockk.mockk
+import io.mockk.runs
+import io.mockk.verify
 import org.junit.jupiter.api.Assertions.*
+import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.assertThrows
-import org.mockito.Mockito.*
-import java.util.*
+import java.util.Optional
 
 class ProjectTeamServiceTest {
 
-    // Wir mocken alle Repositories, die der Service braucht
-    private val projectRepository = mock(ProjectRepository::class.java)
-    private val userRepository = mock(UserRepository::class.java)
-    private val coffeeAccountRepository = mock(CoffeeAccountRepository::class.java)
-    private val projectMemberRepository = mock(ProjectMemberRepository::class.java)
+    private val projectRepository: ProjectRepository = mockk()
+    private val userRepository: UserRepository = mockk()
+    private val coffeeAccountRepository: CoffeeAccountRepository = mockk()
+    private val projectMemberRepository: ProjectMemberRepository = mockk()
+    private val departmentRepository: DepartmentRepository = mockk()
+    private val roleRepository: RoleRepository = mockk()
+    private val userContextResolver: UserContextResolver = mockk()
+    private val permissionService: PermissionService = mockk()
+    private val userService: UserService = mockk()
 
-    // Unser Test-Objekt (das Gehirn)
-    private val projectTeamService = ProjectTeamService(
-        projectRepository, userRepository, coffeeAccountRepository, projectMemberRepository
-    )
+    private lateinit var projectTeamService: ProjectTeamService
 
-    @Test
-    fun `assignUserToProject - sollte Exception werfen wenn Rolle blank ist`() {
-        // Act & Assert
-        val exception = assertThrows<TeamValidationException> {
-            projectTeamService.assignUserToProject("proj-1", "user-1", "   ")
-        }
-        assertEquals("Es muss zwingend eine Projekt-Rolle übergeben werden!", exception.message)
+    private val currentUserId = "admin-123"
+    private val mockContexts = listOf<UserContext>(mockk())
+
+    @BeforeEach
+    fun setUp() {
+        projectTeamService = ProjectTeamService(
+            projectRepository,
+            userRepository,
+            coffeeAccountRepository,
+            projectMemberRepository,
+            departmentRepository,
+            roleRepository,
+            userContextResolver,
+            permissionService,
+            userService = userService
+        )
+
+        // Standardmäßig lösen wir den UserContext auf
+        every { userContextResolver.resolveContexts(currentUserId) } returns mockContexts
     }
 
     @Test
     fun `assignUserToProject - sollte Exception werfen wenn Projekt nicht existiert`() {
-        // Arrange
-        `when`(projectRepository.findById("invalid-proj")).thenReturn(Optional.empty())
+        every { projectRepository.findById("invalid-proj") } returns Optional.empty()
 
-        // Act & Assert
         assertThrows<ProjectNotFoundException> {
-            projectTeamService.assignUserToProject("invalid-proj", "user-1", "DEVELOPER")
+            projectTeamService.assignUserToProject(currentUserId, "invalid-proj", "user-1", RoleType.DEVELOPER)
+        }
+    }
+
+    @Test
+    fun `assignUserToProject - sollte Exception werfen wenn keine Berechtigung vorhanden ist`() {
+        val mockProject = ProjectEntity(id = "proj-1")
+        val mockUser = UserEntity(id = "user-1", isArchived = false)
+
+        every { projectRepository.findById("proj-1") } returns Optional.of(mockProject)
+        every { userRepository.findByIdAndIsArchivedFalse("user-1") } returns mockUser
+        every { permissionService.hasPermission(mockContexts, ActionType.UPDATE, any()) } returns false
+
+        assertThrows<ActionForbiddenException> {
+            projectTeamService.assignUserToProject(currentUserId, "proj-1", "user-1", RoleType.DEVELOPER)
         }
     }
 
     @Test
     fun `assignUserToProject - sollte Exception werfen wenn User nicht existiert`() {
-        // Arrange
         val mockProject = ProjectEntity(id = "proj-1")
-        `when`(projectRepository.findById("proj-1")).thenReturn(Optional.of(mockProject))
-        `when`(userRepository.findById("invalid-user")).thenReturn(Optional.empty())
+        every { projectRepository.findById("proj-1") } returns Optional.of(mockProject)
+        every { userRepository.findByIdAndIsArchivedFalse("invalid-user") } returns null
 
-        // Act & Assert
         assertThrows<UserNotFoundException> {
-            projectTeamService.assignUserToProject("proj-1", "invalid-user", "DEVELOPER")
+            projectTeamService.assignUserToProject(currentUserId, "proj-1", "invalid-user", RoleType.DEVELOPER)
         }
     }
 
     @Test
     fun `assignUserToProject - Happy Path - sollte User erfolgreich zuweisen`() {
-        // Arrange
         val mockProject = ProjectEntity(id = "proj-1")
         val mockUser = UserEntity(id = "user-1", firstName = "Max", lastName = "Mustermann", username = "max")
 
-        `when`(projectRepository.findById("proj-1")).thenReturn(Optional.of(mockProject))
-        `when`(userRepository.findById("user-1")).thenReturn(Optional.of(mockUser))
+        every { projectRepository.findById("proj-1") } returns Optional.of(mockProject)
+        every { userRepository.findByIdAndIsArchivedFalse("user-1") } returns mockUser
+        every { roleRepository.findByName(RoleType.DEVELOPER) } returns RoleEntity(name = RoleType.DEVELOPER)
+        every { permissionService.hasPermission(mockContexts, ActionType.UPDATE, any()) } returns true
+        every { projectMemberRepository.findByUserIdAndProjectId("user-1", "proj-1") } returns null
+        every { projectMemberRepository.save(any()) } answers { firstArg() }
+        every { coffeeAccountRepository.findById("user-1") } returns Optional.empty()
+        every { userService.entityToUserResponseDto(any(), any()) } returns UserResponseDto(
+            id = "user-1",
+            username = "Developer",
+            firstName = "Test",
+            lastName = "User"
+        )
 
-        // 🎯 HIER ANPASSEN: Mock auf die neue ID-basierte Methode umstellen!
-        `when`(projectMemberRepository.findByUserIdAndProjectId("user-1", "proj-1")).thenReturn(null)
+        val result = projectTeamService.assignUserToProject(currentUserId, "proj-1", "user-1", RoleType.DEVELOPER)
 
-        `when`(coffeeAccountRepository.findById("user-1")).thenReturn(Optional.empty())
-
-        // Act
-        val result = projectTeamService.assignUserToProject("proj-1", "user-1", "DEVELOPER")
-
-        // Assert
         assertNotNull(result)
         assertEquals("DEVELOPER", result.projectRole)
-        verify(projectMemberRepository, times(1)).save(any())
+        verify(exactly = 1) { projectMemberRepository.save(any()) }
     }
 }

@@ -28,6 +28,7 @@ dependencies {
     implementation("org.springframework.boot:spring-boot-starter-security")
     implementation("org.springframework.boot:spring-boot-starter-validation")
     implementation("com.giffing.bucket4j.spring.boot.starter:bucket4j-spring-boot-starter:0.10.0")
+    implementation("org.springframework.session:spring-session-jdbc")
 
     runtimeOnly("org.postgresql:postgresql")
 

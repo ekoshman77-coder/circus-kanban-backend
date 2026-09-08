@@ -6,17 +6,22 @@ import com.backend.todo_api.dto.EffortPredictionResponse
 import com.backend.todo_api.dto.FocusPredictionResponse
 import com.backend.todo_api.dto.PlannerFeedbackRequest
 import com.backend.todo_api.dto.PlannerRecommendationRequest
+import com.backend.todo_api.dto.PlannerRecommendationsResponse
 import com.backend.todo_api.dto.RecommendedTodoResponse
+import com.backend.todo_api.dto.SnoozyTodoRequest
 import com.backend.todo_api.model.AiContextType
-import com.backend.todo_api.services.SmartPlannerService
+import com.backend.todo_api.services.BayesPlannerService
+import com.backend.todo_api.services.PlannerCoordinator
 import com.backend.todo_api.services.TrainManager
+import jakarta.validation.Valid
+import org.springframework.http.ResponseEntity
 import org.springframework.web.bind.annotation.*
 
 @CrossOrigin(origins = ["http://localhost:4200"])
 @RestController
 @RequestMapping("/api/ai")
 class AIController(private val trainManager: TrainManager,
-    private val smartPlannerService: SmartPlannerService
+    private val plannerCoordinator: PlannerCoordinator
 ) {
 
     /**
@@ -75,10 +80,10 @@ class AIController(private val trainManager: TrainManager,
      * POST /api/ai/planner/recommend
      */
     @PostMapping("/planner/recommend")
-    fun getPlannerRecommendation(@RequestBody request: PlannerRecommendationRequest): RecommendedTodoResponse {
+    fun getPlannerRecommendation(@RequestBody request: PlannerRecommendationRequest): PlannerRecommendationsResponse {
         // Der smartPlannerService gibt jetzt direkt das neue RecommendedTodoResponse-Objekt
         // mit modeCode und reasonCode zurück!
-        return smartPlannerService.calculatePerfectRecommendation(
+        return plannerCoordinator.getRecommendations(
             userId = request.userId,
             userEnergy = request.userEnergy,
             workingTimeLeft = request.workingTimeLeft
@@ -89,15 +94,23 @@ class AIController(private val trainManager: TrainManager,
      * Nimmt das Nutzer-Feedback entgegen, damit unser System nativ lernt
      * POST /api/ai/planner/feedback
      */
+    /**
+     * Nimmt das Nutzer-Feedback entgegen und liest den Kontext aus der DB-Runde
+     * POST /api/ai/planner/feedback
+     */
     @PostMapping("/planner/feedback")
-    fun handlePlannerFeedback(@RequestBody request: PlannerFeedbackRequest): org.springframework.http.ResponseEntity<Unit> {
-        smartPlannerService.processUserFeedback(
-            userId = request.userId,
-            todoId = request.todoId,
-            accepted = request.accepted,
-            rejectReason = request.rejectReason,
-            currentEnergy = request.currentEnergy
-        )
-        return org.springframework.http.ResponseEntity.ok().build()
+    fun handlePlannerFeedback(@RequestBody request: PlannerFeedbackRequest): ResponseEntity<Unit> {
+        plannerCoordinator.processUserFeedback(request)
+        return ResponseEntity.ok().build()
+    }
+
+    /**
+     * Snoozed ein Todo in der DB (ohne KI-Feedback)
+     * POST /api/ai/planner/snooze
+     */
+    @PostMapping("/planner/snooze")
+    fun handleSnoozing(@Valid @RequestBody request: SnoozyTodoRequest): ResponseEntity<Unit> {
+        plannerCoordinator.snoozeTodoInBackend(request.todoId, request.durationInMin)
+        return ResponseEntity.ok().build()
     }
 }

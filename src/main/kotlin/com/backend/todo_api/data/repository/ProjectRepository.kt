@@ -12,6 +12,12 @@ interface ProjectRepository : JpaRepository<ProjectEntity, String> {
     // 🔍 Findet alle Projekte, die zu einem bestimmten User gehören
     fun findByUserId(userId: String): List<ProjectEntity>
 
+    // 🌟 NEU: Holt alle aktiven Projekte einer bestimmten Abteilung (Status ungleich 'Zip')
+    fun findByDepartmentIdAndStatusNot(departmentId: String, status: String = "Zip"): List<ProjectEntity>
+
+    // 🌟 NEU: Für die Geschäftsleitung (Direction) – sieht alle aktiven Projekte weltweit
+    fun findByStatusNot(status: String = "Zip"): List<ProjectEntity>
+
     @Query("""
         SELECT 
             COUNT(DISTINCT p.id) AS totalProjects,
@@ -22,6 +28,17 @@ interface ProjectRepository : JpaRepository<ProjectEntity, String> {
         LEFT JOIN p.teamMemberships mem
         LEFT JOIN TodoEntity t ON t.milestoneId = m.id
         WHERE p.userId = :userId OR mem.user.id = :userId
+        AND p.status != 'Zip'
     """)
     fun getDashboardStatistics(@Param("userId") userId: String): ProjectStatsProjection
+
+    @Query("""
+        SELECT DISTINCT p FROM ProjectEntity p 
+        JOIN p.teamMemberships mem 
+        WHERE mem.user.id = :userId AND p.status != :status
+    """)
+    fun findProjectsByMemberUserIdAndStatusNot(
+        @Param("userId") userId: String,
+        @Param("status") status: String = "Zip"
+    ): List<ProjectEntity>
 }

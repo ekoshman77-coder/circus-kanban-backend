@@ -5,11 +5,21 @@ import com.backend.todo_api.data.entity.UserEntity
 import com.backend.todo_api.data.repository.ProjectRepository
 import com.backend.todo_api.data.repository.UserRepository
 import com.backend.todo_api.data.repository.CoffeeAccountRepository
+import com.backend.todo_api.data.repository.DepartmentRepository
 import com.backend.todo_api.data.repository.ProjectMemberRepository
+import com.backend.todo_api.data.repository.RoleRepository
 import com.backend.todo_api.dto.UserResponseDto
-import com.backend.todo_api.dto.ProjectMemberDto // 🚀 UNSER NEUES DTO HIER REIN
+import com.backend.todo_api.dto.ProjectMemberDto
+import com.backend.todo_api.exceptions.ActionForbiddenException
+import com.backend.todo_api.exceptions.UserNotFoundException
 import com.backend.todo_api.exceptions.ProjectNotFoundException
-import com.backend.todo_api.exceptions.TeamValidationException
+import com.backend.todo_api.exceptions.UserDepartmentNotFoundException
+import com.backend.todo_api.model.ActionType
+import com.backend.todo_api.model.RoleType
+import com.backend.todo_api.model.ScopeType
+import com.backend.todo_api.model.UserSecurityResource
+import com.backend.todo_api.model.toEntity
+import com.backend.todo_api.model.toSecurityResource
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 
@@ -18,143 +28,228 @@ class ProjectTeamService(
     private val projectRepository: ProjectRepository,
     private val userRepository: UserRepository,
     private val coffeeAccountRepository: CoffeeAccountRepository,
-    private val projectMemberRepository: ProjectMemberRepository
+    private val projectMemberRepository: ProjectMemberRepository,
+    private val departmentRepository: DepartmentRepository,
+    private val roleRepository: RoleRepository,
+    private val userContextResolver: UserContextResolver,
+    private val permissionService: PermissionService,
+    private val userService: UserService
 ) {
 
     /**
-     * 📥 Holt alle Teammitglieder eines Projekts inklusive ihrer echten Rolle aus der Zwischentabelle
+     * 📥 Holt alle Teammitglieder eines Projekts inklusive ihrer echten Rolle
      */
     @Transactional(readOnly = true)
-    fun getMembersForProject(projectId: String): List<ProjectMemberDto> {
+    fun getMembersForProject(projectId: String, currentUserId: String): List<ProjectMemberDto> {
         val project = projectRepository.findById(projectId)
-            .orElseThrow { throw ProjectNotFoundException("Projekt mit ID $projectId nicht gefunden!") }
+            .orElseThrow { ProjectNotFoundException("Projekt mit ID $projectId nicht gefunden!") }
+
+        val userContexts = userContextResolver.resolveContexts(currentUserId)
+        val projectResource = project.toSecurityResource()
+
+        val hasAccess = permissionService.hasPermission(
+            userContexts = userContexts,
+            action = ActionType.READ,
+            resource = projectResource
+        )
+
+        if (!hasAccess) {
+            throw ActionForbiddenException("Keine Berechtigung zum Einsehen des Teams für Projekt $projectId")
+        }
 
         return project.teamMemberships.map { membership ->
             val user = membership.user
             val coffeeAccount = coffeeAccountRepository.findById(user.id).orElse(null)
 
-            val userDto = UserResponseDto(
-                id = user.id,
-                firstName = user.firstName,
-                lastName = user.lastName,
-                username = user.username,
-                coffeeBalance = coffeeAccount?.balance ?: 0f,
-                role = coffeeAccount?.role ?: "",
-                emoji = coffeeAccount?.emoji ?: "",
-                projectIds = user.projectMemberships.map { it.project.id }
-            )
-
-            // 🌟 Wir verheiraten das UserResponseDto mit der echten projectRole aus der DB-Entity!
             ProjectMemberDto(
-                user = userDto,
-                projectRole = membership.role // OWNER, DEVELOPER, etc.
+                user = userService.entityToUserResponseDto(user, coffeeAccount),
+                projectRole = membership.role.name
             )
         }
     }
 
     /**
-     * 🌍 Holt alle User des Systems (Wartebank) und verpasst ihnen im DTO die Rolle "NONE"
+     * 🌍 Holt den Pool an auswählbaren Usern – strikt gefiltert nach der Abteilung des anfragenden Users!
      */
     @Transactional(readOnly = true)
-    fun getAllGlobalUsersWithProjects(): List<ProjectMemberDto> {
-        val allUsers = userRepository.findAll()
+    fun getAllGlobalUsersWithProjects(currentUserId: String): List<ProjectMemberDto> {
+        val requestingUser = userRepository.findById(currentUserId)
+            .orElseThrow { UserNotFoundException("User mit ID $currentUserId nicht gefunden!") }
 
-        return allUsers.map { user ->
-            val coffeeAccount = coffeeAccountRepository.findById(user.id).orElse(null)
+        val userContexts = userContextResolver.resolveContexts(currentUserId)
+        val resultUsers = mutableSetOf<UserEntity>()
 
-            val userDto = UserResponseDto(
-                id = user.id,
-                firstName = user.firstName,
-                lastName = user.lastName,
-                username = user.username,
-                coffeeBalance = coffeeAccount?.balance ?: 0f,
-                role = coffeeAccount?.role ?: "",
-                emoji = coffeeAccount?.emoji ?: "",
-                projectIds = user.projectMemberships.map { it.project.id }
+        for (context in userContexts) {
+            // 🎯 Wir bauen die Resource dynamisch passend zum aktuellen Scope auf:
+            val resourceToCheck = when (context.scope.name) {
+                ScopeType.DEPARTMENT -> UserSecurityResource(
+                    targetUserId = currentUserId,
+                    departmentId = context.scopeInstanceId ?: requestingUser.departmentId
+                )
+                ScopeType.PROJECT -> UserSecurityResource(
+                    targetUserId = currentUserId,
+                    projectId = context.scopeInstanceId // 👈 WICHTIG: Das fehlte bisher!
+                )
+                else -> UserSecurityResource(
+                    targetUserId = currentUserId,
+                    departmentId = requestingUser.departmentId
+                )
+            }
+
+            val hasAccess = permissionService.hasPermission(
+                userContexts = listOf(context),
+                action = ActionType.READ,
+                resource = resourceToCheck
             )
 
-            // 🌍 Weil sie auf der globalen Wartebank sitzen, ist die Projekt-Rolle hier künstlich "NONE"
+            if (hasAccess) {
+                when (context.scope.name) {
+                    // 1. COMPANY (Admin): Darf absolut ALLE freigeschalteten User sehen
+                    ScopeType.COMPANY -> {
+                        resultUsers.addAll(userRepository.findByIsApprovedTrueAndIsArchivedFalse())
+                    }
+
+                    // 2. DEPARTMENT: Alle User aus der eigenen Abteilung hinzufügen
+                    ScopeType.DEPARTMENT -> {
+                        context.scopeInstanceId?.let { deptId ->
+                            resultUsers.addAll(
+                                userRepository.findByIsApprovedAndDepartmentIdAndIsArchivedFalse(true, deptId)
+                            )
+                        }
+                    }
+
+                    // 3. PROJECT: Alle Kollegen aus Projekten hinzufügen, in denen der User Mitglied ist!
+                    ScopeType.PROJECT -> {
+                        context.scopeInstanceId?.let { projectId ->
+                            val projectMembers = projectMemberRepository.findByProjectId(projectId)
+                            resultUsers.addAll(
+                                projectMembers.map { it.user }.filter { it.isApproved && !it.isArchived }
+                            )
+                        }
+                    }
+
+                    else -> {}
+                }
+            }
+        }
+
+        // Wandelt alle gesammelten (eindeutigen) User in DTOs um
+        return resultUsers.map { user ->
+            val coffeeAccount = coffeeAccountRepository.findById(user.id).orElse(null)
             ProjectMemberDto(
-                user = userDto,
-                projectRole = "NONE"
+                user = userService.entityToUserResponseDto(user, coffeeAccount),
+                projectRole = RoleType.DEVELOPER
             )
         }
     }
 
     /**
-     * ➕ Weist einen User einem Projekt mit einer spezifischen Rolle zu
+     * ➕ Weist einen User einem Projekt zu
      */
     @Transactional
-    fun assignUserToProject(projectId: String, userId: String, role: String): ProjectMemberDto {
-        val roleFromFrontend = role.trim()
-        if (roleFromFrontend.isBlank()) {
-            throw TeamValidationException("Es muss zwingend eine Projekt-Rolle übergeben werden!")
+    fun assignUserToProject(currentUserId: String, projectId: String, userId: String, role: RoleType): ProjectMemberDto {
+        val project = projectRepository.findById(projectId)
+            .orElseThrow { ProjectNotFoundException("Projekt mit ID $projectId nicht gefunden!") }
+
+        val user = userRepository.findByIdAndIsArchivedFalse(userId)
+            ?: throw UserNotFoundException("User existiert nicht")
+
+        // 🛡️ BERECHTIGUNGSPRÜFUNG: Bearbeitungsrechte (WRITE) auf das Projekt reichen völlig aus!
+        val userContexts = userContextResolver.resolveContexts(currentUserId)
+        val projectResource = project.toSecurityResource()
+
+        val hasAccess = permissionService.hasPermission(
+            userContexts = userContexts,
+            action = ActionType.UPDATE,
+            resource = projectResource
+        )
+
+        if (!hasAccess) {
+            throw ActionForbiddenException("Keine Berechtigung zum Hinzufügen von Teammitgliedern zum Projekt $projectId")
         }
 
         val existingMembership = projectMemberRepository.findByUserIdAndProjectId(userId, projectId)
 
-        // 💡 Wir deklarieren eine Variable für den User, den wir am Ende fürs DTO brauchen
-        val finalUser: UserEntity
-
         if (existingMembership != null) {
-            existingMembership.role = roleFromFrontend
+            existingMembership.role = role.toEntity(roleRepository)
             projectMemberRepository.save(existingMembership)
-            finalUser = existingMembership.user // Hier haben wir den User direkt!
         } else {
-            // Hier laden wir project und user das EINZIGE Mal aus den Repositories
-            val project = projectRepository.findById(projectId)
-                .orElseThrow { ProjectNotFoundException("Projekt mit ID $projectId nicht gefunden!") }
-            val user = userRepository.findById(userId)
-                .orElseThrow { UserNotFoundException("User mit ID $userId nicht gefunden!") }
-
-            val newMembership = ProjectMemberEntity(
-                project = project,
-                user = user,
-                role = roleFromFrontend
-            )
-            projectMemberRepository.save(newMembership)
-            finalUser = user // Hier nutzen wir die lokal geladene Variable einfach weiter!
+            val newMembership = ProjectMemberEntity(project = project, user = user, role = role.toEntity(roleRepository))
+            val savedMemberShip = projectMemberRepository.save(newMembership)
+            project.teamMemberships.add(savedMemberShip)
+            user.projectMemberships.add(savedMemberShip)
         }
 
-        // ☕ Kaffeekonto-Logik bleibt absolut gleich
-        val coffeeAccount = coffeeAccountRepository.findById(finalUser.id).orElse(null)
+        val coffeeAccount = coffeeAccountRepository.findById(userId).orElse(null)
 
-        val userDto = UserResponseDto(
-            id = finalUser.id,
-            firstName = finalUser.firstName,
-            lastName = finalUser.lastName,
-            username = finalUser.username,
-            coffeeBalance = coffeeAccount?.balance ?: 0f,
-            role = coffeeAccount?.role ?: "",
-            emoji = coffeeAccount?.emoji ?: "",
-            projectIds = finalUser.projectMemberships.map { it.project.id }
+        return ProjectMemberDto(
+            user = userService.entityToUserResponseDto(user, coffeeAccount),
+            projectRole = role
         )
-
-        return ProjectMemberDto(user = userDto, projectRole = roleFromFrontend)
     }
 
     /**
-     * 🗑️ Entfernt den User aus der Zwischentabelle eines Projekts
+     * 🗑️ Entfernt den User aus dem Projekt
      */
     @Transactional
-    fun removeUserFromProject(projectId: String, memberId: String) {
+    fun removeUserFromProject(projectId: String, targetUserId: String, currentUserId: String) {
         val project = projectRepository.findById(projectId)
-            .orElseThrow { throw ProjectNotFoundException("Projekt mit ID $projectId nicht gefunden!") }
-        val user = userRepository.findById(memberId)
-            .orElseThrow { throw UserNotFoundException("User mit ID $memberId nicht gefunden!") }
+            .orElseThrow { ProjectNotFoundException("Projekt mit ID $projectId nicht gefunden!") }
 
-        val membership = projectMemberRepository.findByUserIdAndProjectId(memberId, projectId)
+        val userContexts = userContextResolver.resolveContexts(currentUserId)
+        val projectResource = project.toSecurityResource()
+
+        val hasAccess = permissionService.hasPermission(
+            userContexts = userContexts,
+            action = ActionType.UPDATE,
+            resource = projectResource
+        )
+
+        if (!hasAccess) {
+            throw ActionForbiddenException("Keine Berechtigung zum Entfernen von Teammitgliedern aus Projekt $projectId")
+        }
+
+        val membership = projectMemberRepository.findByUserIdAndProjectId(targetUserId, projectId)
         if (membership != null) {
+            project.teamMemberships.remove(membership)
+            membership.user.projectMemberships.remove(membership)
             projectMemberRepository.delete(membership)
         }
     }
 
     /**
-     * ☕ Bleibt exakt wie vorher – aktualisiert nur das Kaffeekonto global
+     * ☕ Aktualisiert das Kaffeekonto eines Users weltweit
      */
     @Transactional
-    fun updateCoffeeAccount(userId: String, balance: Float, role: String, emoji: String): UserResponseDto {
-        val account = coffeeAccountRepository.findById(userId)
+    fun updateCoffeeAccount(
+        currentUserId: String,
+        targetUserId: String,
+        balance: Float,
+        role: String,
+        emoji: String
+    ): UserResponseDto {
+
+        val userContexts = userContextResolver.resolveContexts(currentUserId)
+        val targetUser = userRepository.findById(targetUserId)
+            .orElseThrow { UserNotFoundException("User mit ID $targetUserId nicht gefunden!") }
+
+        val userResource = UserSecurityResource(targetUserId = targetUserId, departmentId = targetUser.departmentId)
+
+        val hasAccess = permissionService.hasPermission(
+            userContexts = userContexts,
+            action = ActionType.UPDATE,
+            resource = userResource
+        )
+
+        if (!hasAccess) {
+            throw ActionForbiddenException("Keine Berechtigung zum Ändern dieses Kaffeekontos")
+        }
+
+        if (targetUser.isArchived) {
+            throw UserNotFoundException("User existiert nicht oder ist archiviert.")
+        }
+
+        val account = coffeeAccountRepository.findById(targetUserId)
             .orElseThrow { IllegalArgumentException("Konto nicht gefunden") }
 
         account.balance = balance
@@ -162,17 +257,32 @@ class ProjectTeamService(
         account.emoji = emoji
         coffeeAccountRepository.save(account)
 
-        val user = userRepository.findById(userId).get()
+        return userService.entityToUserResponseDto(targetUser, account)
+    }
 
-        return UserResponseDto(
-            id = user.id,
-            firstName = user.firstName,
-            lastName = user.lastName,
-            username = user.username,
-            coffeeBalance = account.balance,
-            role = account.role,
-            emoji = account.emoji,
-            projectIds = user.projectMemberships.map { it.project.id }
+    @Transactional(readOnly = true)
+    fun getAllUsersForAdminBoard(currentUserId: String): List<ProjectMemberDto> {
+        val userContexts = userContextResolver.resolveContexts(currentUserId)
+        val userResource = UserSecurityResource(targetUserId = currentUserId, departmentId = null)
+
+        val hasAccess = permissionService.hasPermission(
+            userContexts = userContexts,
+            action = ActionType.READ,
+            resource = userResource
         )
+
+        if (!hasAccess) {
+            throw ActionForbiddenException("Keine Admin-Berechtigung für das globale User-Board")
+        }
+
+        val allApprovedUsers = userRepository.findByIsArchivedFalse()
+
+        return allApprovedUsers.map { user ->
+            val coffeeAccount = coffeeAccountRepository.findById(user.id).orElse(null)
+            ProjectMemberDto(
+                user = userService.entityToUserResponseDto(user, coffeeAccount),
+                projectRole = RoleType.DEVELOPER
+            )
+        }
     }
 }
