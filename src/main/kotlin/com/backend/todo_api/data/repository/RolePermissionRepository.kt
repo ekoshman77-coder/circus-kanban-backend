@@ -47,4 +47,12 @@ interface RolePermissionRepository : JpaRepository<RolePermissionEntity, String>
         scope: ScopeEntity,
         spec: DepartmentSpecializationEntity?
     ): List<RolePermissionEntity>
+
+    fun findByRoleAndResourceAndActionAndTargetScopeAndDepartmentSpecialization(
+        role: RoleEntity,
+        resource: ResourceEntity,
+        action: ActionEntity,
+        scope: ScopeEntity,
+        specialization: DepartmentSpecializationEntity?
+    ) : RolePermissionEntity?
 }

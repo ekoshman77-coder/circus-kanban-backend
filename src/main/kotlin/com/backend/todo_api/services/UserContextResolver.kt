@@ -9,6 +9,7 @@ import com.backend.todo_api.exceptions.UserDeletedException
 import com.backend.todo_api.model.RoleType
 import com.backend.todo_api.model.ScopeType
 import com.backend.todo_api.model.UserContext
+import com.backend.todo_api.model.toEntity
 import org.springframework.stereotype.Component
 
 @Component
@@ -64,7 +65,7 @@ class UserContextResolver(
             // A) Standard-Abteilungs-Kontext (Standard-Board)
             contexts.add(
                 UserContext(
-                    scope = department.defaultScope,
+                    scope = ScopeType.DEPARTMENT.toEntity(scopeRepository),
                     scopeInstanceId = department.id,
                     role = userRole
                 )
@@ -72,8 +73,7 @@ class UserContextResolver(
 
             // B) Spezialisierungs-Kontext (Globales Admin-/Special-Board)
             if (!ignoreDepartmentSpecialization && department.specialization != null) {
-                val companyScope = scopeRepository.findByName(ScopeType.COMPANY)
-                    ?: throw IllegalStateException("COMPANY Scope existiert nicht in der DB!")
+                val companyScope = ScopeType.COMPANY.toEntity(scopeRepository)
 
                 contexts.add(
                     UserContext(

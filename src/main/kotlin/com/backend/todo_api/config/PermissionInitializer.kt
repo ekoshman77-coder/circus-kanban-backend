@@ -3,6 +3,7 @@ package com.backend.todo_api.config
 import com.backend.todo_api.data.entity.*
 import com.backend.todo_api.data.repository.*
 import com.backend.todo_api.model.*
+import com.backend.todo_api.services.RolePermissionAdminService
 import org.springframework.boot.CommandLineRunner
 import org.springframework.core.annotation.Order
 import org.springframework.stereotype.Component
@@ -16,7 +17,8 @@ class PermissionInitializer(
     private val actionRepository: ActionRepository,
     private val roleRepository: RoleRepository,
     private val rolePermissionRepository: RolePermissionRepository,
-    private val specializationRepository: DepartmentSpecializationRepository
+    private val specializationRepository: DepartmentSpecializationRepository,
+    private val rolePermissionService: RolePermissionAdminService
 ) : CommandLineRunner {
 
     @Transactional
@@ -88,36 +90,36 @@ class PermissionInitializer(
 
     // --- HELPER METHOD MIT SPECIALIZATION SUPPORT ---
 
-    private fun savePermissionIfNotExists(
-        roleType: RoleType,
-        resourceType: ResourceType,
-        actionType: ActionType,
-        scopeType: ScopeType,
-        specializationType: DepartmentSpecializationType? = null
-    ) {
-        val role = roleRepository.findByName(roleType)!!
-        val resource = resourceRepository.findByName(resourceType)!!
-        val action = actionRepository.findByName(actionType)!!
-        val scope = scopeRepository.findByName(scopeType)!!
-        val specialization = specializationType?.let { specializationRepository.findByName(it) }
-
-        val exists = rolePermissionRepository.existsByRoleAndResourceAndActionAndTargetScopeAndDepartmentSpecialization(
-            role, resource, action, scope, specialization
-        )
-
-        if (!exists) {
-            rolePermissionRepository.save(
-                RolePermissionEntity(
-                    role = role,
-                    resource = resource,
-                    action = action,
-                    targetScope = scope,
-                    departmentSpecialization = specialization
-                )
-            )
-            println("✨ [PermissionInit] Neue Permission angelegt: $roleType -> $resourceType [$actionType]")
-        }
-    }
+//    private fun savePermissionIfNotExists(
+//        roleType: RoleType,
+//        resourceType: ResourceType,
+//        actionType: ActionType,
+//        scopeType: ScopeType,
+//        specializationType: DepartmentSpecializationType? = null
+//    ) {
+//        val role = roleRepository.findByName(roleType)!!
+//        val resource = resourceRepository.findByName(resourceType)!!
+//        val action = actionRepository.findByName(actionType)!!
+//        val scope = scopeRepository.findByName(scopeType)!!
+//        val specialization = specializationType?.let { specializationRepository.findByName(it) }
+//
+//        val exists = rolePermissionRepository.existsByRoleAndResourceAndActionAndTargetScopeAndDepartmentSpecialization(
+//            role, resource, action, scope, specialization
+//        )
+//
+//        if (!exists) {
+//            rolePermissionRepository.save(
+//                RolePermissionEntity(
+//                    role = role,
+//                    resource = resource,
+//                    action = action,
+//                    targetScope = scope,
+//                    departmentSpecialization = specialization
+//                )
+//            )
+//            println("✨ [PermissionInit] Neue Permission angelegt: $roleType -> $resourceType [$actionType]")
+//        }
+//    }
 
     // --- PERMISSION MODULES ---
 
@@ -136,28 +138,28 @@ class PermissionInitializer(
  //       if (rolePermissionRepository.existsByResource(noteResource)) return
 
         listOf(ActionType.READ, ActionType.CREATE, ActionType.UPDATE, ActionType.DELETE, ActionType.EXECUTE).forEach { action ->
-            savePermissionIfNotExists(RoleType.OWNER, ResourceType.NOTE, action, ScopeType.RESOURCE)
+            rolePermissionService.createPermissionIfNotExists(RoleType.OWNER, ResourceType.NOTE, action, ScopeType.RESOURCE)
         }
 
         // 2. Normale Abteilungs- & Projektmitglieder (DEPARTMENT / PROJECT Scope)
         listOf(ActionType.READ, ActionType.CREATE, ActionType.EXECUTE).forEach { action ->
-            savePermissionIfNotExists(RoleType.MEMBER, ResourceType.NOTE, action, ScopeType.DEPARTMENT)
+            rolePermissionService.createPermissionIfNotExists(RoleType.MEMBER, ResourceType.NOTE, action, ScopeType.DEPARTMENT)
 
             listOf(RoleType.DEVELOPER, RoleType.PROJECT_MANAGER).forEach { role ->
-                savePermissionIfNotExists(role, ResourceType.NOTE, action, ScopeType.PROJECT)
+                rolePermissionService.createPermissionIfNotExists(role, ResourceType.NOTE, action, ScopeType.PROJECT)
             }
         }
 
         // 3. DEPARTMENT_HEAD: Rechte sowohl auf DEPARTMENT- als auch auf COMPANY-Ebene!
         listOf(ActionType.READ, ActionType.CREATE, ActionType.EXECUTE).forEach { action ->
-            savePermissionIfNotExists(RoleType.DEPARTMENT_HEAD, ResourceType.NOTE, action, ScopeType.DEPARTMENT)
-            savePermissionIfNotExists(RoleType.DEPARTMENT_HEAD, ResourceType.NOTE, action, ScopeType.COMPANY)
+            rolePermissionService.createPermissionIfNotExists(RoleType.DEPARTMENT_HEAD, ResourceType.NOTE, action, ScopeType.DEPARTMENT)
+            rolePermissionService.createPermissionIfNotExists(RoleType.DEPARTMENT_HEAD, ResourceType.NOTE, action, ScopeType.COMPANY)
         }
 
         // 4. ADMIN-Spezialisierung (Sonderaktionen PROMOTE & REVERT)
         listOf(ActionType.PROMOTE, ActionType.REVERT).forEach { action ->
             listOf(RoleType.MEMBER, RoleType.DEPARTMENT_HEAD).forEach { role ->
-                savePermissionIfNotExists(
+                rolePermissionService.createPermissionIfNotExists(
                     role, ResourceType.NOTE, action, ScopeType.COMPANY,
                     DepartmentSpecializationType.ADMIN
                 )
@@ -170,20 +172,20 @@ class PermissionInitializer(
 //        if (rolePermissionRepository.existsByResource(projectResource)) return
 
         listOf(ActionType.READ, ActionType.UPDATE, ActionType.EXECUTE, ActionType.CREATE, ActionType.INVITE).forEach { action ->
-            savePermissionIfNotExists(RoleType.OWNER, ResourceType.PROJECT, action, ScopeType.RESOURCE)
+            rolePermissionService.createPermissionIfNotExists(RoleType.OWNER, ResourceType.PROJECT, action, ScopeType.RESOURCE)
         }
 
         listOf(ActionType.CREATE, ActionType.READ, ActionType.UPDATE, ActionType.EXECUTE, ActionType.INVITE).forEach { action ->
-            savePermissionIfNotExists(RoleType.PROJECT_MANAGER, ResourceType.PROJECT, action, ScopeType.PROJECT)
-            savePermissionIfNotExists(RoleType.DEVELOPER, ResourceType.PROJECT, action, ScopeType.PROJECT)
+            rolePermissionService.createPermissionIfNotExists(RoleType.PROJECT_MANAGER, ResourceType.PROJECT, action, ScopeType.PROJECT)
+            rolePermissionService.createPermissionIfNotExists(RoleType.DEVELOPER, ResourceType.PROJECT, action, ScopeType.PROJECT)
         }
 
         listOf(ActionType.READ, ActionType.DELETE, ActionType.CREATE).forEach { action ->
-            savePermissionIfNotExists(RoleType.DEPARTMENT_HEAD, ResourceType.PROJECT, action, ScopeType.DEPARTMENT)
+            rolePermissionService.createPermissionIfNotExists(RoleType.DEPARTMENT_HEAD, ResourceType.PROJECT, action, ScopeType.DEPARTMENT)
         }
 
         listOf(ActionType.READ, ActionType.CREATE).forEach { action ->
-            savePermissionIfNotExists(RoleType.MEMBER, ResourceType.PROJECT, action, ScopeType.DEPARTMENT)
+            rolePermissionService.createPermissionIfNotExists(RoleType.MEMBER, ResourceType.PROJECT, action, ScopeType.DEPARTMENT)
         }
     }
 
@@ -192,37 +194,37 @@ class PermissionInitializer(
         if (rolePermissionRepository.existsByResource(todoResource)) return
 
         listOf(ActionType.READ, ActionType.CREATE, ActionType.UPDATE, ActionType.DELETE).forEach { action ->
-            savePermissionIfNotExists(RoleType.OWNER, ResourceType.TODO, action, ScopeType.RESOURCE)
+            rolePermissionService.createPermissionIfNotExists(RoleType.OWNER, ResourceType.TODO, action, ScopeType.RESOURCE)
         }
 
         listOf(ActionType.READ, ActionType.CREATE, ActionType.UPDATE).forEach { action ->
-            savePermissionIfNotExists(RoleType.MEMBER, ResourceType.TODO, action, ScopeType.PROJECT)
-            savePermissionIfNotExists(RoleType.DEVELOPER, ResourceType.TODO, action, ScopeType.PROJECT)
+            rolePermissionService.createPermissionIfNotExists(RoleType.MEMBER, ResourceType.TODO, action, ScopeType.PROJECT)
+            rolePermissionService.createPermissionIfNotExists(RoleType.DEVELOPER, ResourceType.TODO, action, ScopeType.PROJECT)
         }
 
         listOf(ActionType.READ, ActionType.CREATE, ActionType.UPDATE, ActionType.DELETE).forEach { action ->
-            savePermissionIfNotExists(RoleType.PROJECT_MANAGER, ResourceType.TODO, action, ScopeType.PROJECT)
+            rolePermissionService.createPermissionIfNotExists(RoleType.PROJECT_MANAGER, ResourceType.TODO, action, ScopeType.PROJECT)
         }
     }
 
     private fun initUserPermissions() {
         listOf(ActionType.READ, ActionType.UPDATE, ActionType.DELETE).forEach { action ->
-            savePermissionIfNotExists(RoleType.OWNER, ResourceType.USER, action, ScopeType.RESOURCE)
+            rolePermissionService.createPermissionIfNotExists(RoleType.OWNER, ResourceType.USER, action, ScopeType.RESOURCE)
         }
 
         listOf(RoleType.MEMBER, RoleType.DEPARTMENT_HEAD, RoleType.DEVELOPER).forEach { role ->
-            savePermissionIfNotExists(role, ResourceType.USER, ActionType.READ, ScopeType.DEPARTMENT)
+            rolePermissionService.createPermissionIfNotExists(role, ResourceType.USER, ActionType.READ, ScopeType.DEPARTMENT)
         }
 
-        savePermissionIfNotExists(RoleType.DEVELOPER, ResourceType.USER, ActionType.READ, ScopeType.PROJECT)
-        savePermissionIfNotExists(RoleType.PROJECT_MANAGER, ResourceType.USER, ActionType.READ, ScopeType.PROJECT)
-        savePermissionIfNotExists(RoleType.DEPARTMENT_HEAD, ResourceType.USER, ActionType.INVITE, ScopeType.COMPANY)
-        savePermissionIfNotExists(RoleType.PROJECT_MANAGER, ResourceType.USER, ActionType.INVITE, ScopeType.COMPANY)
+        rolePermissionService.createPermissionIfNotExists(RoleType.DEVELOPER, ResourceType.USER, ActionType.READ, ScopeType.PROJECT)
+        rolePermissionService.createPermissionIfNotExists(RoleType.PROJECT_MANAGER, ResourceType.USER, ActionType.READ, ScopeType.PROJECT)
+        rolePermissionService.createPermissionIfNotExists(RoleType.DEPARTMENT_HEAD, ResourceType.USER, ActionType.INVITE, ScopeType.COMPANY)
+        rolePermissionService.createPermissionIfNotExists(RoleType.PROJECT_MANAGER, ResourceType.USER, ActionType.INVITE, ScopeType.COMPANY)
     }
 
     private fun initDepartmentPermissions() {
-        savePermissionIfNotExists(RoleType.MEMBER, ResourceType.DEPARTMENT, ActionType.READ, ScopeType.DEPARTMENT)
-        savePermissionIfNotExists(RoleType.DEPARTMENT_HEAD, ResourceType.DEPARTMENT, ActionType.INVITE, ScopeType.COMPANY)
+        rolePermissionService.createPermissionIfNotExists(RoleType.MEMBER, ResourceType.DEPARTMENT, ActionType.READ, ScopeType.DEPARTMENT)
+        rolePermissionService.createPermissionIfNotExists(RoleType.DEPARTMENT_HEAD, ResourceType.DEPARTMENT, ActionType.INVITE, ScopeType.COMPANY)
     }
 
     private fun initPermissionManagementPermissions() {
@@ -237,7 +239,7 @@ class PermissionInitializer(
         listOf(RoleType.MEMBER, RoleType.DEPARTMENT_HEAD).forEach { role ->
             adminResources.forEach { resource ->
                 listOf(ActionType.READ, ActionType.CREATE, ActionType.UPDATE, ActionType.DELETE, ActionType.INVITE).forEach { action ->
-                    savePermissionIfNotExists(
+                    rolePermissionService.createPermissionIfNotExists(
                         roleType = role,
                         resourceType = resource,
                         actionType = action,

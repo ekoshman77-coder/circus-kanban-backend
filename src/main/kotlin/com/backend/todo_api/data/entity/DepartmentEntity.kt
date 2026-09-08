@@ -13,10 +13,6 @@ class DepartmentEntity(
     @Column(name = "name", unique = true, nullable = false)
     var name: String = "",
 
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "scope_id", nullable = false)
-    var defaultScope: ScopeEntity = ScopeEntity(),
-
     // NULLABLE: Bestimmt die Sonderfunktion der Abteilung (ADMIN, AUDIT, HR)
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "specialization_id", nullable = true)

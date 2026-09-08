@@ -7,13 +7,11 @@ import com.backend.todo_api.data.repository.ScopeRepository
 import com.backend.todo_api.data.repository.UserRepository
 import com.backend.todo_api.dto.CreateDepartmentDto
 import com.backend.todo_api.dto.DepartmentDto
-import com.backend.todo_api.dto.toDto
 import com.backend.todo_api.exceptions.ActionForbiddenException
 import com.backend.todo_api.mapper.DepartmentMapper
 import com.backend.todo_api.model.ActionType
 import com.backend.todo_api.model.DepartmentSecurityResource
 import com.backend.todo_api.model.ScopeType
-import com.backend.todo_api.model.toEntity
 import com.backend.todo_api.model.toSecurityResource
 import jakarta.transaction.Transactional
 import org.springframework.stereotype.Service

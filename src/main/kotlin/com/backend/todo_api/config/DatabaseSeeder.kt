@@ -41,7 +41,6 @@ class DatabaseSeeder(
             // Admin-Abteilung erhält den COMPANY-Scope UND die ADMIN-Spezialisierung
             val adminDepartment = DepartmentEntity(
                 name = AppConstants.ADMIN_DEPARTMENT_NAME,
-                defaultScope = scope,
                 specialization = adminSpec
             )
             entityManager.persist(adminDepartment)

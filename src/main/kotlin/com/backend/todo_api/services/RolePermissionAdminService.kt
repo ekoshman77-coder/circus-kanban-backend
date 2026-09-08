@@ -12,6 +12,7 @@ import com.backend.todo_api.exceptions.ActionForbiddenException
 import com.backend.todo_api.exceptions.PermissionAlreadyExistsException
 import com.backend.todo_api.exceptions.PermissionNotFoundException
 import com.backend.todo_api.model.*
+import jakarta.persistence.EntityNotFoundException
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 
@@ -22,7 +23,9 @@ class RolePermissionAdminService(
     private val actionRepository: ActionRepository,
     private val resourceRepository: ResourceRepository,
     private val scopeRepository: ScopeRepository,
-    private val specializationRepository: DepartmentSpecializationRepository
+    private val specializationRepository: DepartmentSpecializationRepository,
+    private val permissionService: PermissionService,
+    private val userContextResolver: UserContextResolver
 ) {
 
     fun RolePermissionEntity.toDto(): RolePermissionResponseDto {
@@ -68,9 +71,25 @@ class RolePermissionAdminService(
         )
     }
 
+    private fun verifyAdminPermission(userId: String, requiredAction: ActionType) {
+        val userContexts = userContextResolver.resolveContexts(userId)
+
+        val hasPermission = permissionService.hasPermission(
+            userContexts = userContexts,
+            resource = PermissionSecurityResource(),
+            action = requiredAction,
+        )
+
+        if (!hasPermission) {
+            throw ActionForbiddenException("Du hast keine Berechtigung, Berechtigungen zu verwalten ($requiredAction)!")
+        }
+    }
+
     /** 2. Alle aktuell in der DB gespeicherten Berechtigungen abrufen */
     @Transactional(readOnly = true)
-    fun getAllRolePermissions(): List<RolePermissionResponseDto> {
+    fun getAllRolePermissions(userId: String): List<RolePermissionResponseDto> {
+        verifyAdminPermission(userId, ActionType.READ)
+
         return rolePermissionRepository.findAll().map { perm ->
             perm.toDto()
         }
@@ -78,7 +97,9 @@ class RolePermissionAdminService(
 
     /** 3. Den Scope einer bestehenden Regel anpassen */
     @Transactional
-    fun updatePermissionScope(dto: UpdateRolePermissionDto): RolePermissionResponseDto {
+    fun updatePermissionScope(userId: String, dto: UpdateRolePermissionDto): RolePermissionResponseDto {
+        verifyAdminPermission(userId, ActionType.UPDATE)
+
         val perm = rolePermissionRepository.findById(dto.id)
             .orElseThrow { PermissionNotFoundException("Permission mit ID ${dto.id} nicht gefunden.") }
 
@@ -93,7 +114,9 @@ class RolePermissionAdminService(
 
     /** 4. Eine neue Berechtigung anlegen */
     @Transactional
-    fun createPermission(dto: CreateRolePermissionDto): RolePermissionResponseDto {
+    fun createPermission(userId: String, dto: CreateRolePermissionDto): RolePermissionResponseDto {
+        verifyAdminPermission(userId, ActionType.CREATE)
+
         // 1. Strings in Enum-Typen auflösen
         val roleType = RoleType.valueOf(dto.role)
         val resourceType = ResourceType.valueOf(dto.resource)
@@ -131,7 +154,8 @@ class RolePermissionAdminService(
     }
 
     @Transactional
-    fun deletePermission(id: String) {
+    fun deletePermission(userid: String, id: String) {
+        verifyAdminPermission(userid, ActionType.DELETE)
         val perm = rolePermissionRepository.findById(id)
             .orElseThrow { PermissionNotFoundException("Permission mit ID $id existiert nicht.") }
 
@@ -139,11 +163,84 @@ class RolePermissionAdminService(
         rolePermissionRepository.delete(perm)
     }
 
+    @Transactional
+    fun createBatchPermissions(
+        userId: String,
+        dto: BatchCreateRolePermissionDto
+         // 👈 UserContext des aktuellen Aufrufers
+    ): List<RolePermissionResponseDto> {
+
+        // 🔒 1. Einmalige Sicherheitsprüfung für die gesamte Gruppe!
+        verifyAdminPermission(userId, ActionType.CREATE)
+
+        val createdPermissions = mutableListOf<RolePermissionResponseDto>()
+
+        // 2. Erstellen aller gewünschten Kombos
+        for (role in dto.roles) {
+            for (action in dto.actions) {
+                val entity = createPermissionIfNotExists(
+                    roleType = role,
+                    resourceType = dto.resource,
+                    actionType = action,
+                    scopeType = dto.scope,
+                    specializationType = dto.specialization
+                )
+                createdPermissions.add(entity.toDto())
+            }
+        }
+        return createdPermissions
+    }
+
+
     private fun checkSelfLockoutAttempt(perm: RolePermissionEntity) {
         // 🔒 Systemschutz: Admin-Spezialisierungs-Rechte dürfen im UI nicht gelöscht werden!
         if (perm.departmentSpecialization?.name == DepartmentSpecializationType.ADMIN
-            && perm.resource.name == ResourceType.PERMISSION) {
+            && perm.resource.name == ResourceType.PERMISSION
+        ) {
             throw ActionForbiddenException("System-Berechtigungen für die ADMIN-Spezialisierung dürfen nicht gelöscht werden!")
+        }
+    }
+
+    @Transactional
+    fun createPermissionIfNotExists(
+        roleType: RoleType,
+        resourceType: ResourceType,
+        actionType: ActionType,
+        scopeType: ScopeType,
+        specializationType: DepartmentSpecializationType? = null
+    ): RolePermissionEntity {
+
+        val role = roleRepository.findByName(roleType)
+            ?: throw EntityNotFoundException("Role $roleType nicht gefunden")
+        val resource = resourceRepository.findByName(resourceType)
+            ?: throw EntityNotFoundException("Resource $resourceType nicht gefunden")
+        val action = actionRepository.findByName(actionType)
+            ?: throw EntityNotFoundException("Action $actionType nicht gefunden")
+        val scope = scopeRepository.findByName(scopeType)
+            ?: throw EntityNotFoundException("Scope $scopeType nicht gefunden")
+
+        val specialization = specializationType?.let {
+            specializationRepository.findByName(it)
+                ?: throw EntityNotFoundException("Specialization $it nicht gefunden")
+        }
+
+        // Prüfen, ob exakt diese Berechtigung schon existiert
+        val existing = rolePermissionRepository.findByRoleAndResourceAndActionAndTargetScopeAndDepartmentSpecialization(
+            role, resource, action, scope, specialization
+        ) ?: null // oder direkt Nullable im Repository
+
+        return if (existing != null) {
+            existing
+        } else {
+            rolePermissionRepository.save(
+                RolePermissionEntity(
+                    role = role,
+                    resource = resource,
+                    action = action,
+                    targetScope = scope,
+                    departmentSpecialization = specialization ?: null
+                )
+            )
         }
     }
 }
