@@ -88,4 +88,10 @@ class GlobalExceptionHandler {
         ResponseEntity.status(HttpStatus.NOT_FOUND)
             .body(ErrorResponse(ErrorCode.NOTE_NOT_FOUND, ex.message))
 
+    // 🛡️ 409 Conflict für doppelte Entitäten (z. B. Idee/Projekt mit gleichem Namen)
+    @ExceptionHandler(ResourceAlreadyExistsException::class)
+    fun handleResourceAlreadyExists(ex: ResourceAlreadyExistsException) =
+        ResponseEntity.status(HttpStatus.CONFLICT)
+            .body(ErrorResponse(ErrorCode.RESOURCE_ALREADY_EXISTS, ex.message))
+
 }

@@ -2,6 +2,7 @@ package com.backend.todo_api.controller
 
 import com.backend.todo_api.dto.CreateNoteDto
 import com.backend.todo_api.dto.NoteDto
+import com.backend.todo_api.model.ScopeType
 import com.backend.todo_api.services.NoteService
 import io.mockk.every
 import io.mockk.just
@@ -33,7 +34,7 @@ class NoteControllerTest {
     @Test
     fun `getNotes sollte Notizen des Users zurueckgeben`() {
         val notesList = listOf(
-            NoteDto(id = noteId, title = "Titel 1", content = "Inhalt 1", userId = mockUserId)
+            NoteDto(id = noteId, title = "Titel 1", content = "Inhalt 1", userId = mockUserId, scope = ScopeType.DEPARTMENT)
         )
 
         every { noteService.getNotesByUserId(mockUserId) } returns notesList
@@ -48,7 +49,7 @@ class NoteControllerTest {
 
     @Test
     fun `getNoteById sollte Notiz anhand ID zurueckgeben`() {
-        val note = NoteDto(id = noteId, title = "Einzelne Notiz", userId = mockUserId)
+        val note = NoteDto(id = noteId, title = "Einzelne Notiz", userId = mockUserId, scope = ScopeType.DEPARTMENT)
 
         every { noteService.getNoteById(mockUserId, noteId) } returns note
 
@@ -73,7 +74,8 @@ class NoteControllerTest {
             title = "Controller lernen",
             content = "MockMvc verstehen",
             userId = mockUserId,
-            isInCalculation = true
+            isInCalculation = true,
+            scope = ScopeType.DEPARTMENT
         )
 
         every { noteService.createNote(mockUserId, inputDto) } returns mockResponse
@@ -89,7 +91,7 @@ class NoteControllerTest {
 
     @Test
     fun `updateNote sollte aktualisierte Notiz zurueckgeben`() {
-        val updateDto = NoteDto(id = noteId, title = "Neuer Titel", content = "Neuer Inhalt", userId = mockUserId)
+        val updateDto = NoteDto(id = noteId, title = "Neuer Titel", content = "Neuer Inhalt", userId = mockUserId, scope = ScopeType.DEPARTMENT)
 
         every { noteService.updateNote(mockUserId, noteId, updateDto) } returns updateDto
 

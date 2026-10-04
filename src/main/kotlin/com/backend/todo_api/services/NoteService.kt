@@ -10,6 +10,7 @@ import com.backend.todo_api.dto.toDto
 import com.backend.todo_api.dto.toNewEntity
 import com.backend.todo_api.exceptions.ActionForbiddenException
 import com.backend.todo_api.exceptions.NoteNotFoundException
+import com.backend.todo_api.exceptions.ResourceAlreadyExistsException
 import com.backend.todo_api.model.ActionType
 import com.backend.todo_api.model.AiContextType
 import com.backend.todo_api.model.ScopeType
@@ -33,6 +34,10 @@ class NoteService(
 {
 
     fun createNote(userId: String, noteDto: CreateNoteDto): NoteDto {
+        if (noteRepository.existsByTitleIgnoreCaseAndIsArchivedFalse(noteDto.title.trim())) {
+            throw ResourceAlreadyExistsException("Eine Idee mit dem Namen '${noteDto.title}' existiert bereits!")
+        }
+
         val noteEntity = noteDto.toNewEntity( scopeRepository )
         // Da jeder aktive User eine Abteilung HABEN MUSS, prüfen wir direkt gegen user.departmentId!
         checkPermission(userId, noteEntity, ActionType.CREATE,"Zugriff verweigert: Du darfst keine Notizen erstellen.")

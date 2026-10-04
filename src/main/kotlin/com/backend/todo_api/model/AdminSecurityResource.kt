@@ -1,9 +1,8 @@
 package com.backend.todo_api.model
 
-import com.backend.todo_api.data.entity.NoteEntity
 import com.backend.todo_api.data.entity.RolePermissionEntity
 
-data class PermissionSecurityResource(
+data class AdminSecurityResource(
     val scope: ScopeType? = null
 ): VisitableResource {
     override val resourceType = ResourceType.PERMISSION
@@ -18,6 +17,6 @@ data class PermissionSecurityResource(
 }
 
 // Permission Mapper
-fun RolePermissionEntity.toSecurityResource(): PermissionSecurityResource {
-    return PermissionSecurityResource()
+fun RolePermissionEntity.toSecurityResource(): AdminSecurityResource {
+    return AdminSecurityResource()
 }

@@ -11,6 +11,7 @@ import com.backend.todo_api.dto.ProjectDashboardStatsDTO
 import com.backend.todo_api.dto.ProjectDto
 import com.backend.todo_api.dto.ProjectMemberDto
 import com.backend.todo_api.exceptions.ActionForbiddenException
+import com.backend.todo_api.exceptions.ResourceAlreadyExistsException
 import com.backend.todo_api.model.ActionType
 import com.backend.todo_api.model.ScopeType
 import com.backend.todo_api.model.toEntity
@@ -91,6 +92,9 @@ class ProjectService(
 
     @Transactional
     fun createProject(userId: String, dto: CreateProjectDto): ProjectDto {
+        if (projectRepository.existsByTitleIgnoreCaseAndStatusNot(dto.title)) {
+            throw ResourceAlreadyExistsException("Ein Projekt mit dem Namen '${dto.title.trim()}' existiert bereits!")
+        }
         // 🏗️ Wir wandeln das DTO um (das Team bleibt dabei komplett LEER)
         val projectEntity = convertToEntity(dto, scopeRepository = scopeRepository)
 

@@ -38,4 +38,5 @@ interface NoteRepository: JpaRepository<NoteEntity, String> {
 """)
     fun findNotesByProjectId(@Param("projectId") projectId: String): List<NoteEntity>
     fun findByIdAndIsArchivedFalse(noteId: String): NoteEntity?
+    fun existsByTitleIgnoreCaseAndIsArchivedFalse(title: String): Boolean
 }

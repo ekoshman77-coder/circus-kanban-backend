@@ -4,7 +4,6 @@ import com.backend.todo_api.data.entity.UserEntity
 import com.backend.todo_api.data.repository.UserRepository
 import com.backend.todo_api.data.repository.TodoRepository
 import com.backend.todo_api.dto.GamificationResult
-import com.backend.todo_api.dto.OfflinePomodoroItem
 import jakarta.transaction.Transactional
 import org.springframework.stereotype.Service
 
@@ -77,15 +76,6 @@ class GamificationService(
         }
         val gainedXp = count * 15
         return applyXpAndCheckLevelUp(user, gainedXp, triggerLevelUpCheck = true)
-    }
-
-    @Transactional
-    fun processBulkPomodoros(userId: String, sessions: List<OfflinePomodoroItem>): GamificationResult {
-        val user = userRepository.findById(userId).orElseThrow {
-            IllegalArgumentException("User $userId nicht gefunden.")
-        }
-        val totalGainedXp = sessions.size * 15
-        return applyXpAndCheckLevelUp(user, totalGainedXp, triggerLevelUpCheck = true)
     }
 
     // --- REINE XP-BERECHCHNUNG FÜR EINEN SINGULÄREN USER ---

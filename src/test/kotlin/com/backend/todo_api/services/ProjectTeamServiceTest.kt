@@ -16,6 +16,7 @@ import com.backend.todo_api.exceptions.TeamValidationException
 import com.backend.todo_api.exceptions.UserNotFoundException
 import com.backend.todo_api.model.ActionType
 import com.backend.todo_api.model.RoleType
+import com.backend.todo_api.model.UserContext
 import io.mockk.every
 import io.mockk.just
 import io.mockk.mockk
@@ -118,7 +119,7 @@ class ProjectTeamServiceTest {
         val result = projectTeamService.assignUserToProject(currentUserId, "proj-1", "user-1", RoleType.DEVELOPER)
 
         assertNotNull(result)
-        assertEquals("DEVELOPER", result.projectRole)
+        assertEquals(RoleType.DEVELOPER, result.projectRole)
         verify(exactly = 1) { projectMemberRepository.save(any()) }
     }
 }

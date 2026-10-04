@@ -41,4 +41,6 @@ interface ProjectRepository : JpaRepository<ProjectEntity, String> {
         @Param("userId") userId: String,
         @Param("status") status: String = "Zip"
     ): List<ProjectEntity>
+
+    fun existsByTitleIgnoreCaseAndStatusNot(title: String, status: String = "Zip"): Boolean
 }

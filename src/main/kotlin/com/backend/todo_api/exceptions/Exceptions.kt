@@ -10,7 +10,8 @@ enum class ErrorCode(val value: String) {
     PROJECT_NOT_FOUND("PROJECT_NOT_FOUND"),
     TEAM_VALIDATION_ERROR("TEAM_VALIDATION_ERROR"),
     FORBIDDEN("ACTION_FORBIDDEN"),
-    NOTE_NOT_FOUND("NOTE_NOT_FOUND")
+    NOTE_NOT_FOUND("NOTE_NOT_FOUND"),
+    RESOURCE_ALREADY_EXISTS("RESOURE_ALREADY_EXIST")
 }
 
 data class ErrorResponse(
@@ -34,3 +35,4 @@ class ActionForbiddenException(message: String): RuntimeException(message)
 class PermissionAlreadyExistsException(message: String) : RuntimeException(message)
 class PermissionNotFoundException(message: String) : RuntimeException(message)
 class NoteNotFoundException(message: String): RuntimeException(message)
+class ResourceAlreadyExistsException(message: String) : RuntimeException(message)

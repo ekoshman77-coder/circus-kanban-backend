@@ -76,7 +76,7 @@ class RolePermissionAdminService(
 
         val hasPermission = permissionService.hasPermission(
             userContexts = userContexts,
-            resource = PermissionSecurityResource(),
+            resource = AdminSecurityResource(),
             action = requiredAction,
         )
 
@@ -88,8 +88,6 @@ class RolePermissionAdminService(
     /** 2. Alle aktuell in der DB gespeicherten Berechtigungen abrufen */
     @Transactional(readOnly = true)
     fun getAllRolePermissions(userId: String): List<RolePermissionResponseDto> {
-        verifyAdminPermission(userId, ActionType.READ)
-
         return rolePermissionRepository.findAll().map { perm ->
             perm.toDto()
         }

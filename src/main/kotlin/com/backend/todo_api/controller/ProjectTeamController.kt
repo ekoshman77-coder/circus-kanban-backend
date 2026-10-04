@@ -111,7 +111,6 @@ class ProjectTeamController(
     }
 
     @GetMapping("/all-users")
-    @PreAuthorize("hasRole('ADMIN')")
     @Operation(
         summary = "Alle aktiven Benutzer für das Admin-Board abrufen",
         description = "Liefert eine vollständige Liste aller registrierten Benutzer (sowohl freigeschaltete als auch im Warteraum befindliche), schließt archivierte (soft-gelöschte) Benutzer jedoch konsequent aus."

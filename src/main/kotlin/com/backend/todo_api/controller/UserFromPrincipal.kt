@@ -7,5 +7,5 @@ import java.security.Principal
 
 public fun getUserIdFromPrincipal(principal: Principal?): String {
     return principal?.name
-        ?: throw ActionForbiddenException("Nicht authorisiert")
+        ?: throw ResponseStatusException(HttpStatus.UNAUTHORIZED, "Nicht authentifiziert / Session abgelaufen")
 }

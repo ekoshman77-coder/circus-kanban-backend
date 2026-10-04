@@ -130,7 +130,7 @@ class ProjectTeamServicePermissionsTest {
         val result = projectTeamService.getMembersForProject(projectId, currentUserId)
 
         assertEquals(1, result.size)
-        assertEquals("DEVELOPER", result[0].projectRole)
+        assertEquals(RoleType.DEVELOPER, result[0].projectRole)
     }
 
     // --- REMOVE USER TESTS ---

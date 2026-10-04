@@ -52,7 +52,7 @@ class ProjectTeamControllerTest {
     @Test
     fun `GET - api-teams - sollte Mitglieder des Projekts zurückgeben wenn projectId vorhanden ist`() {
         val userResponse = UserResponseDto(id = "mem-1", username = "johndoe", firstName = "John", lastName = "Doe")
-        val member = ProjectMemberDto(user = userResponse, projectRole = "DEVELOPER")
+        val member = ProjectMemberDto(user = userResponse, projectRole = RoleType.DEVELOPER, )
 
         every { projectTeamService.getMembersForProject("proj-1", mockUserId) } returns listOf(member)
 
@@ -72,7 +72,7 @@ class ProjectTeamControllerTest {
     @Test
     fun `GET - api-teams - sollte globalen Abteilungs-Pool zurückgeben wenn keine projectId uebergeben wird`() {
         val userResponse = UserResponseDto(id = "mem-2", username = "janedoe", firstName = "Jane", lastName = "Doe")
-        val member = ProjectMemberDto(user = userResponse, projectRole = "MEMBER")
+        val member = ProjectMemberDto(user = userResponse, projectRole = RoleType.PROJECT_MANAGER)
 
         every { projectTeamService.getAllGlobalUsersWithProjects(mockUserId) } returns listOf(member)
 
@@ -184,7 +184,7 @@ class ProjectTeamControllerTest {
     @Test
     fun `GET - api-teams-all-users - sollte alle Admin-Benutzer zurueckgeben`() {
         val userResponse = UserResponseDto(id = "user-1", username = "adminuser", firstName = "Admin", lastName = "User")
-        val member = ProjectMemberDto(user = userResponse, projectRole = "ADMIN")
+        val member = ProjectMemberDto(user = userResponse, projectRole = RoleType.DEVELOPER)
 
         every { projectTeamService.getAllUsersForAdminBoard(mockUserId) } returns listOf(member)
 

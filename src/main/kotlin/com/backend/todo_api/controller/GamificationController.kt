@@ -1,6 +1,5 @@
 package com.backend.todo_api.controller
 
-import com.backend.todo_api.dto.BulkPomodoroRequest
 import com.backend.todo_api.dto.GamificationResult
 import com.backend.todo_api.dto.SinglePomodoroRequest
 import com.backend.todo_api.services.GamificationService
@@ -26,20 +25,6 @@ class GamificationController(
             userId = request.userId,
             todoId = request.todoId,
             count = request.count
-        )
-        return ResponseEntity.ok(result)
-    }
-
-    /**
-     * Endpunkt für das Synchronisieren aller offline gesammelten Pomodoros (Bulk-Sync)
-     */
-    @PostMapping("/bulk")
-    fun recordBulkSessions(@RequestBody request: BulkPomodoroRequest): ResponseEntity<GamificationResult> {
-        // Der Service verarbeitet die gesamte Liste auf einmal, rechnet die XP zusammen
-        // und gibt das finale Gamification-Endergebnis an das Frontend zurück.
-        val result = gamificationService.processBulkPomodoros(
-            userId = request.userId,
-            sessions = request.sessions
         )
         return ResponseEntity.ok(result)
     }

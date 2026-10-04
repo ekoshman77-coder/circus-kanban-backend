@@ -1,7 +1,8 @@
 package com.backend.todo_api.controller
 
 import com.backend.todo_api.dto.CreateUserDto
-import com.backend.todo_api.dto.OnRegisterOrLogin
+import com.backend.todo_api.dto.OnLogin
+import com.backend.todo_api.dto.OnRegister
 import com.backend.todo_api.dto.OnUpdate
 import com.backend.todo_api.dto.UserApproveDto
 import com.backend.todo_api.dto.UserDto
@@ -52,12 +53,9 @@ class UserController(private val userService: UserService) {
         ]
     )
     fun loginUser(
-        @Validated(OnRegisterOrLogin::class) @RequestBody dto: CreateUserDto,
+        @Validated(OnLogin::class) @RequestBody dto: CreateUserDto,
         request: HttpServletRequest
     ): ResponseEntity<Any> {
-        if (dto.username.isBlank()) {
-            return ResponseEntity.badRequest().body(mapOf("error" to "Name darf nicht leer sein!"))
-        }
 
         val userDto = userService.login(dto)
         val isUserAdmin = userService.isAdminDepartment(userDto.department?.id)
@@ -87,12 +85,9 @@ class UserController(private val userService: UserService) {
         ]
     )
     fun registerUser(
-        @Validated(OnRegisterOrLogin::class) @RequestBody dto: CreateUserDto,
+        @Validated(OnRegister::class) @RequestBody dto: CreateUserDto,
         request: HttpServletRequest
     ): ResponseEntity<Any> {
-        if (dto.username.isBlank()) {
-            return ResponseEntity.badRequest().body(mapOf("error" to "Name darf nicht leer sein!"))
-        }
         val userDto = userService.register(dto)
         val isUserAdmin = userService.isAdminDepartment(userDto.department?.id)
         val roleName = if (isUserAdmin) "ROLE_ADMIN" else "ROLE_USER"
@@ -129,7 +124,7 @@ class UserController(private val userService: UserService) {
         ]
     )
     fun createUser(
-        @Validated(OnRegisterOrLogin::class) @RequestBody dto: CreateUserDto,
+        @Validated(OnRegister::class) @RequestBody dto: CreateUserDto,
         principal: Principal?
     ): ResponseEntity<UserDto> {
         if (dto.username.isBlank()) {

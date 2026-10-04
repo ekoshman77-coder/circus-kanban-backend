@@ -7,10 +7,13 @@ import com.backend.todo_api.data.entity.UserEntity
 import com.backend.todo_api.data.repository.DepartmentRepository
 import com.backend.todo_api.data.repository.ScopeRepository
 import com.backend.todo_api.data.repository.UserRepository
+import com.backend.todo_api.dto.CreateDepartmentDto
 import com.backend.todo_api.dto.DepartmentDto
 import com.backend.todo_api.exceptions.ActionForbiddenException
+import com.backend.todo_api.mapper.DepartmentMapper
 import com.backend.todo_api.model.ActionType
 import com.backend.todo_api.model.ScopeType
+import com.backend.todo_api.model.UserContext
 import io.mockk.*
 import org.junit.jupiter.api.Assertions.*
 import org.junit.jupiter.api.BeforeEach
@@ -25,6 +28,7 @@ class DepartmentServiceTest {
     private val scopeRepository: ScopeRepository = mockk()
     private val userContextResolver: UserContextResolver = mockk()
     private val permissionService: PermissionService = mockk()
+    private val departmentMapper: DepartmentMapper = mockk()
 
     private lateinit var departmentService: DepartmentService
 
@@ -38,7 +42,8 @@ class DepartmentServiceTest {
             userRepository,
             scopeRepository,
             userContextResolver,
-            permissionService
+            permissionService,
+            departmentMapper
         )
     }
 
@@ -53,9 +58,16 @@ class DepartmentServiceTest {
         val dept1 = DepartmentEntity(id = "1", name = "HR")
         val dept2 = DepartmentEntity(id = "2", name = "IT")
 
+        val dto1 = DepartmentDto(id = "1", name = "HR")
+        val dto2 = DepartmentDto(id = "2", name = "IT")
+
         every { userContextResolver.resolveContexts(userId) } returns listOf(companyContext)
         every { permissionService.hasPermission(listOf(companyContext), ActionType.READ, any()) } returns true
         every { departmentRepository.findAll() } returns listOf(dept1, dept2)
+
+        // Mappings mocken
+        every { departmentMapper.toDto(dept1) } returns dto1
+        every { departmentMapper.toDto(dept2) } returns dto2
 
         // WHEN
         val result = departmentService.getAllDepartments(userId)
@@ -86,25 +98,32 @@ class DepartmentServiceTest {
 
     @Test
     fun `createDepartment sollte Abteilung speichern wenn Rechte vorhanden sind`() {
-        val dto = DepartmentDto(id = deptId, name = "Marketing", scope = ScopeType.DEPARTMENT)
+        // GIVEN
+        val dto = CreateDepartmentDto(name = "Marketing")
+        val entityToSave = DepartmentEntity(name = "Marketing")
+        val savedEntity = DepartmentEntity(id = "dept-marketing-1", name = "Marketing")
+        val expectedDto = DepartmentDto(id = "dept-marketing-1", name = "Marketing")
 
         every { userContextResolver.resolveContexts(userId) } returns emptyList()
         every { permissionService.hasPermission(any(), ActionType.CREATE, any()) } returns true
         every { departmentRepository.findByNameIgnoreCase("Marketing") } returns null
 
-        // Scope Entity Mocking
-        every { scopeRepository.findByName(ScopeType.DEPARTMENT) } returns ScopeEntity(name = ScopeType.DEPARTMENT, hierarchyLevel = 20)
-        every { departmentRepository.save(any()) } answers { firstArg() }
+        // Mappings mocken
+        every { departmentMapper.toEntity(dto) } returns entityToSave
+        every { departmentRepository.save(entityToSave) } returns savedEntity
+        every { departmentMapper.toDto(savedEntity) } returns expectedDto
 
+        // WHEN
         val result = departmentService.createDepartment(userId, dto)
 
+        // THEN
         assertEquals("Marketing", result.name)
-        verify { departmentRepository.save(any()) }
+        verify { departmentRepository.save(entityToSave) }
     }
 
     @Test
     fun `createDepartment sollte ActionForbiddenException werfen wenn Rechte fehlen`() {
-        val dto = DepartmentDto(name = "Marketing")
+        val dto = CreateDepartmentDto(name = "Marketing")
 
         every { userContextResolver.resolveContexts(userId) } returns emptyList()
         every { permissionService.hasPermission(any(), ActionType.CREATE, any()) } returns false
@@ -118,30 +137,41 @@ class DepartmentServiceTest {
 
     @Test
     fun `updateDepartment sollte Namen aendern wenn Rechte vorhanden sind`() {
-        val existingDept = DepartmentEntity(id = deptId, name = "Old Name")
+        // GIVEN
+        val existingEntity = DepartmentEntity(id = deptId, name = "Old Name")
+        val inputDto = DepartmentDto(id = deptId, name = "New Name")
+        val updatedEntity = DepartmentEntity(id = deptId, name = "New Name")
+        val expectedDto = DepartmentDto(id = deptId, name = "New Name")
 
-        every { departmentRepository.findById(deptId) } returns Optional.of(existingDept)
+        every { departmentRepository.findById(deptId) } returns Optional.of(existingEntity)
         every { userContextResolver.resolveContexts(userId) } returns emptyList()
         every { permissionService.hasPermission(any(), ActionType.UPDATE, any()) } returns true
+        every { departmentMapper.updateEntityFromDto(inputDto, existingEntity) } returns updatedEntity
         every { departmentRepository.findByNameIgnoreCase("New Name") } returns null
-        every { departmentRepository.save(any()) } answers { firstArg() }
+        every { departmentRepository.save(updatedEntity) } returns updatedEntity
+        every { departmentMapper.toDto(updatedEntity) } returns expectedDto
 
-        val result = departmentService.updateDepartment(userId, deptId, "New Name")
+        // WHEN
+        val result = departmentService.updateDepartment(userId, deptId, inputDto)
 
+        // THEN
         assertEquals("New Name", result.name)
-        verify { departmentRepository.save(existingDept) }
+        verify { departmentRepository.save(updatedEntity) }
     }
 
     @Test
     fun `updateDepartment sollte Exception werfen wenn Admin Abteilung geaendert wird`() {
-        val adminDept = DepartmentEntity(id = deptId, name = AppConstants.ADMIN_DEPARTMENT_NAME)
+        // GIVEN
+        val adminEntity = DepartmentEntity(id = deptId, name = AppConstants.ADMIN_DEPARTMENT_NAME)
+        val inputDto = DepartmentDto(id = deptId, name = "Hacked Admin")
 
-        every { departmentRepository.findById(deptId) } returns Optional.of(adminDept)
+        every { departmentRepository.findById(deptId) } returns Optional.of(adminEntity)
         every { userContextResolver.resolveContexts(userId) } returns emptyList()
         every { permissionService.hasPermission(any(), ActionType.UPDATE, any()) } returns true
 
-        assertThrows<IllegalArgumentException> {
-            departmentService.updateDepartment(userId, deptId, "Hacked Admin")
+        // WHEN & THEN
+        assertThrows< IllegalArgumentException > {
+            departmentService.updateDepartment(userId, deptId, inputDto)
         }
     }
 
