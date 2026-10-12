@@ -306,6 +306,9 @@ class UserService(
         targetUser.departmentId = dto.departmentId
         targetUser.isApproved = true
         targetUser.departmentRole = dto.departmentRole.toEntity(roleRepository)
+        targetUser.supervisor = dto.supervisorId?.let { id ->
+            userRepository.findById(id).orElse(null)
+        }
 
         val savedUser = userRepository.save(targetUser)
         val coffeeAccount = coffeeAccountRepository.findById(savedUser.id).orElse(null)
@@ -348,6 +351,13 @@ class UserService(
         return adminDept?.id == departmentId
     }
 
+    fun getOwnStatus(userId: String): UserDto {
+        val user = userRepository.findByIdAndIsArchivedFalse(userId)
+            ?: throw UserNotFoundException("Benutzer nicht gefunden.")
+
+        return copyToUserDto(user, UserDto())
+    }
+
     fun UserEntity.toDto(): UserDto {
         return copyToUserDto(this, UserDto())
     }
@@ -369,6 +379,8 @@ class UserService(
         val dto = UserResponseDto()
         val dtoWithUser = copyToUserDto(userEntity, dto) as UserResponseDto
         dtoWithUser.projectIds = userEntity.projectMemberships.map { it.project.id }
+        dtoWithUser.supervisorId = userEntity.supervisor?.id
+        dtoWithUser.supervisorName = userEntity.supervisor?.let { "${it.firstName} ${it.lastName}".trim() }
         return copyCoffeeAccountToResponseDto(coffeeAccountEntity, dtoWithUser)
     }
 

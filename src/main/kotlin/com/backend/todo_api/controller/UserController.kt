@@ -204,17 +204,23 @@ class UserController(private val userService: UserService) {
     }
 
     @GetMapping("/status/{userId}")
-    @PreAuthorize("authentication.name == @userService.getUserById(#userId).username")
+ //   @PreAuthorize("authentication.name == @userService.getUserById(#userId, #userId).username")
     @Operation(
         summary = "Eigenen Freischaltungs-Status pollen",
         description = "Ermöglicht dem wartenden Client zu prüfen, ob der Account freigeschaltet wurde. Aktualisiert die Sitzung bei Erfolg live."
     )
     fun getUserStatus(
+        @PathVariable userId: String,
         request: HttpServletRequest,
         principal: Principal?
     ): ResponseEntity<UserDto> {
         val currentUserId = getUserIdFromPrincipal(principal)
-        val userDto = userService.getUserById(currentUserId, currentUserId)
+
+        if (currentUserId != userId) {
+            throw ActionForbiddenException("Du darfst nur deinen eigenen Status abfragen!")
+        }
+
+        val userDto = userService.getOwnStatus(currentUserId)
 
         if (userDto.isApproved) {
             val isUserAdmin = userService.isAdminDepartment(userDto.department?.id)

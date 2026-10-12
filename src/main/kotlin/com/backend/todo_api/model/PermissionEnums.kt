@@ -69,6 +69,8 @@ enum class RoleType(
     // 🏢 Organisatorische Abteilungsrollen
     DEPARTMENT_HEAD(isProjectRole = false, isDepartmentRole = true, "Abteilungsleiter"),
     MEMBER(isProjectRole = false, isDepartmentRole = true, "Standard-Abteilungsmitglied"),
+    INTERN(isProjectRole = false, isDepartmentRole = true, "Praktikant / Azubi"),
+    GUEST(isProjectRole = false, isDepartmentRole = true, "Gast / Externer"),
 
     // 📂 Projekt- & Teamrollen
     PROJECT_MANAGER(isProjectRole = true, isDepartmentRole = false, "Projektleiter"),

@@ -60,13 +60,15 @@ class PermissionInitializer(
         val resourceScope = scopeRepository.findByName(ScopeType.RESOURCE)!!
         val deptScope = scopeRepository.findByName(ScopeType.DEPARTMENT)!!
         val projectScope = scopeRepository.findByName(ScopeType.PROJECT)!!
-        val companyScope = scopeRepository.findByName(ScopeType.COMPANY)!!
 
-        createRoleIfNotFound(RoleType.OWNER, resourceScope)
-        createRoleIfNotFound(RoleType.MEMBER, deptScope)
-        createRoleIfNotFound(RoleType.DEPARTMENT_HEAD, deptScope)
-        createRoleIfNotFound(RoleType.PROJECT_MANAGER, projectScope)
-        createRoleIfNotFound(RoleType.DEVELOPER, projectScope)
+        RoleType.entries.forEach { roleType ->
+            val scope = when {
+                roleType.isDepartmentRole -> deptScope
+                roleType.isProjectRole -> projectScope
+                else -> resourceScope // Fallback für OWNER etc.
+            }
+            createRoleIfNotFound(roleType, scope)
+        }
     }
 
     private fun initSpecializations() {
@@ -88,38 +90,6 @@ class PermissionInitializer(
         }
     }
 
-    // --- HELPER METHOD MIT SPECIALIZATION SUPPORT ---
-
-//    private fun savePermissionIfNotExists(
-//        roleType: RoleType,
-//        resourceType: ResourceType,
-//        actionType: ActionType,
-//        scopeType: ScopeType,
-//        specializationType: DepartmentSpecializationType? = null
-//    ) {
-//        val role = roleRepository.findByName(roleType)!!
-//        val resource = resourceRepository.findByName(resourceType)!!
-//        val action = actionRepository.findByName(actionType)!!
-//        val scope = scopeRepository.findByName(scopeType)!!
-//        val specialization = specializationType?.let { specializationRepository.findByName(it) }
-//
-//        val exists = rolePermissionRepository.existsByRoleAndResourceAndActionAndTargetScopeAndDepartmentSpecialization(
-//            role, resource, action, scope, specialization
-//        )
-//
-//        if (!exists) {
-//            rolePermissionRepository.save(
-//                RolePermissionEntity(
-//                    role = role,
-//                    resource = resource,
-//                    action = action,
-//                    targetScope = scope,
-//                    departmentSpecialization = specialization
-//                )
-//            )
-//            println("✨ [PermissionInit] Neue Permission angelegt: $roleType -> $resourceType [$actionType]")
-//        }
-//    }
 
     // --- PERMISSION MODULES ---
 
@@ -156,6 +126,9 @@ class PermissionInitializer(
             rolePermissionService.createPermissionIfNotExists(RoleType.DEPARTMENT_HEAD, ResourceType.NOTE, action, ScopeType.COMPANY)
         }
 
+        rolePermissionService.createPermissionIfNotExists(RoleType.INTERN, ResourceType.NOTE, ActionType.READ, ScopeType.DEPARTMENT)
+        rolePermissionService.createPermissionIfNotExists(RoleType.INTERN, ResourceType.NOTE, ActionType.READ, ScopeType.PROJECT)
+
         // 4. ADMIN-Spezialisierung (Sonderaktionen PROMOTE & REVERT)
         listOf(ActionType.PROMOTE, ActionType.REVERT).forEach { action ->
             listOf(RoleType.MEMBER, RoleType.DEPARTMENT_HEAD).forEach { role ->
@@ -187,6 +160,9 @@ class PermissionInitializer(
         listOf(ActionType.READ, ActionType.CREATE).forEach { action ->
             rolePermissionService.createPermissionIfNotExists(RoleType.MEMBER, ResourceType.PROJECT, action, ScopeType.DEPARTMENT)
         }
+
+        rolePermissionService.createPermissionIfNotExists(RoleType.INTERN, ResourceType.PROJECT, ActionType.READ, ScopeType.DEPARTMENT)
+        rolePermissionService.createPermissionIfNotExists(RoleType.INTERN, ResourceType.PROJECT, ActionType.READ, ScopeType.PROJECT)
     }
 
     private fun initTodoPermissions() {
@@ -205,6 +181,9 @@ class PermissionInitializer(
         listOf(ActionType.READ, ActionType.CREATE, ActionType.UPDATE, ActionType.DELETE).forEach { action ->
             rolePermissionService.createPermissionIfNotExists(RoleType.PROJECT_MANAGER, ResourceType.TODO, action, ScopeType.PROJECT)
         }
+
+        rolePermissionService.createPermissionIfNotExists(RoleType.INTERN, ResourceType.TODO, ActionType.READ, ScopeType.DEPARTMENT)
+        rolePermissionService.createPermissionIfNotExists(RoleType.INTERN, ResourceType.TODO, ActionType.READ, ScopeType.PROJECT)
     }
 
     private fun initUserPermissions() {
@@ -216,6 +195,8 @@ class PermissionInitializer(
             rolePermissionService.createPermissionIfNotExists(role, ResourceType.USER, ActionType.READ, ScopeType.DEPARTMENT)
         }
 
+        rolePermissionService.createPermissionIfNotExists(RoleType.INTERN, ResourceType.USER, ActionType.READ, ScopeType.PROJECT)
+
         rolePermissionService.createPermissionIfNotExists(RoleType.DEVELOPER, ResourceType.USER, ActionType.READ, ScopeType.PROJECT)
         rolePermissionService.createPermissionIfNotExists(RoleType.PROJECT_MANAGER, ResourceType.USER, ActionType.READ, ScopeType.PROJECT)
         rolePermissionService.createPermissionIfNotExists(RoleType.DEPARTMENT_HEAD, ResourceType.USER, ActionType.INVITE, ScopeType.COMPANY)
@@ -225,6 +206,8 @@ class PermissionInitializer(
     private fun initDepartmentPermissions() {
         rolePermissionService.createPermissionIfNotExists(RoleType.MEMBER, ResourceType.DEPARTMENT, ActionType.READ, ScopeType.DEPARTMENT)
         rolePermissionService.createPermissionIfNotExists(RoleType.DEPARTMENT_HEAD, ResourceType.DEPARTMENT, ActionType.INVITE, ScopeType.COMPANY)
+
+        rolePermissionService.createPermissionIfNotExists(RoleType.INTERN, ResourceType.DEPARTMENT, ActionType.READ, ScopeType.DEPARTMENT)
     }
 
     private fun initPermissionManagementPermissions() {

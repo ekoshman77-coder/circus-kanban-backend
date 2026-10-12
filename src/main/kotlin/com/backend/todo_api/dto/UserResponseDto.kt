@@ -9,6 +9,8 @@ class UserResponseDto(
     lastName: String = "",
     department: DepartmentDto? = null,
     departmentRole: RoleType = RoleType.MEMBER,
+    var supervisorId: String? = null,
+    var supervisorName: String? = null,
     isApproved: Boolean = false,
     var projectIds: List<String> = ArrayList(),
 
