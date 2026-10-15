@@ -1,10 +1,12 @@
 package com.backend.todo_api.model
 
 import com.backend.todo_api.data.entity.ActionEntity
+import com.backend.todo_api.data.entity.DepartmentSpecializationEntity
 import com.backend.todo_api.data.entity.ResourceEntity
 import com.backend.todo_api.data.entity.RoleEntity
 import com.backend.todo_api.data.entity.ScopeEntity
 import com.backend.todo_api.data.repository.ActionRepository
+import com.backend.todo_api.data.repository.DepartmentSpecializationRepository
 import com.backend.todo_api.data.repository.ResourceRepository
 import com.backend.todo_api.data.repository.RoleRepository
 import com.backend.todo_api.data.repository.ScopeRepository
@@ -31,7 +33,9 @@ enum class ActionType {
     UPDATE,
     DELETE,
     EXECUTE,
-    INVITE
+    INVITE,
+    PROMOTE,
+    REVERT
 }
 
 fun ActionType.toEntity(actionRepository: ActionRepository): ActionEntity {
@@ -51,7 +55,7 @@ enum class ScopeType(
     COMPANY(40, isDepartmentSelectable = true, "Firmenweit / Global")
 }
 
-fun ScopeType.toEntity(scopeRepository: ScopeRepository): ScopeEntity{
+fun ScopeType.toEntity(scopeRepository: ScopeRepository): ScopeEntity {
     return scopeRepository.findByName(this)
         ?: throw IllegalStateException("Kritischer Fehler: Scope $this existiert nicht in der Datenbank!")
 }
@@ -63,10 +67,10 @@ enum class RoleType(
     val description: String
 ) {
     // 🏢 Organisatorische Abteilungsrollen
-    ADMIN_HEAD(isProjectRole = false, isDepartmentRole = true, "Super-Administrator (Volle Systemkontrolle)"),
-    ADMIN(isProjectRole = false, isDepartmentRole = true, "Systemweiter Administrator"),
     DEPARTMENT_HEAD(isProjectRole = false, isDepartmentRole = true, "Abteilungsleiter"),
     MEMBER(isProjectRole = false, isDepartmentRole = true, "Standard-Abteilungsmitglied"),
+    INTERN(isProjectRole = false, isDepartmentRole = true, "Praktikant / Azubi"),
+    GUEST(isProjectRole = false, isDepartmentRole = true, "Gast / Externer"),
 
     // 📂 Projekt- & Teamrollen
     PROJECT_MANAGER(isProjectRole = true, isDepartmentRole = false, "Projektleiter"),
@@ -80,4 +84,18 @@ enum class RoleType(
 fun RoleType.toEntity(roleRepository: RoleRepository): RoleEntity {
     return roleRepository.findByName(this)
         ?: throw IllegalStateException("Kritischer Fehler: Rolle $this existiert nicht in der Datenbank!")
+}
+
+// 5. Alle verfügbaren Abteilungs-Spezialisierungen / Sonder-Funktionen
+enum class DepartmentSpecializationType(
+    val description: String
+) {
+    ADMIN("System-Administration mit erweiterten Verwaltungsrechten"),
+    AUDIT("Revision & Qualitätsmanagement mit erweiterten Lese-/Prüfrechten"),
+    HR("Personalabteilung mit Zugriff auf Mitarbeiterdaten")
+}
+
+fun DepartmentSpecializationType.toEntity(repository: DepartmentSpecializationRepository): DepartmentSpecializationEntity {
+    return repository.findByName(this)
+        ?: throw IllegalStateException("Kritischer Fehler: DepartmentSpecialization $this existiert nicht in der Datenbank!")
 }

@@ -1,5 +1,6 @@
 package com.backend.todo_api.controller
 
+import com.backend.todo_api.dto.CreateDepartmentDto
 import com.backend.todo_api.dto.DepartmentDto
 import com.backend.todo_api.services.DepartmentService
 import io.swagger.v3.oas.annotations.Operation
@@ -24,7 +25,7 @@ class DepartmentController(private val departmentService: DepartmentService) {
 
     @PostMapping
     @Operation(summary = "Neue Abteilung erstellen")
-    fun createDepartment(@RequestBody dto: DepartmentDto, principal: Principal? ): ResponseEntity<DepartmentDto> {
+    fun createDepartment(@RequestBody dto: CreateDepartmentDto, principal: Principal? ): ResponseEntity<DepartmentDto> {
         val currentUserId = getUserIdFromPrincipal(principal)
         val created = departmentService.createDepartment(currentUserId,dto)
         return ResponseEntity.status(HttpStatus.CREATED).body(created)
@@ -38,7 +39,7 @@ class DepartmentController(private val departmentService: DepartmentService) {
         principal: Principal?
     ): ResponseEntity<DepartmentDto> {
         val currentUserId = getUserIdFromPrincipal(principal)
-        val updated = departmentService.updateDepartment(currentUserId, id, dto.name)
+        val updated = departmentService.updateDepartment(currentUserId, id, dto)
         return ResponseEntity.ok(updated)
     }
 

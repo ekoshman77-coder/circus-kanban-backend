@@ -42,6 +42,10 @@ class UserEntity(
     @JoinColumn(name = "department_role_id")
     var departmentRole: RoleEntity? = null,
 
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "supervisor_id")
+    var supervisor: UserEntity? = null,
+
     @Column(name = "is_approved", nullable = false)
     var isApproved: Boolean = false,
 

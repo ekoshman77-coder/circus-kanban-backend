@@ -1,5 +1,6 @@
 package com.backend.todo_api.controller
 
+import com.backend.todo_api.dto.AdminTodoFilterDto
 import com.backend.todo_api.dto.CreateTodoDto
 import com.backend.todo_api.dto.QuickPanelMode
 import com.backend.todo_api.dto.SyncResultDto
@@ -35,6 +36,21 @@ class TodoController(private val todoService: TodoService) {
     ): ResponseEntity<List<TodoDto>> {
         val userId = getUserIdFromPrincipal(principal)
         return ResponseEntity.ok(todoService.getTodos(userId))
+    }
+
+    /**
+     * 👑 Admin-Endpunkt: Lädt gefilterte Todos für das Admin-Board (On-Demand Fetching).
+     * Bietet Schutz vor Datenflut, da ohne gültigen Filter eine leere Liste zurückgegeben wird.
+     */
+    @PostMapping("/admin/filter")
+    @Operation(summary = "👑 Admin: Todos gezielt nach Abteilung, Projekt, User oder Status filtern")
+    fun getAdminTodosByFilter(
+        @RequestBody filter: AdminTodoFilterDto,
+        principal: Principal?
+    ): ResponseEntity<List<TodoDto>> {
+        val userId = getUserIdFromPrincipal(principal)
+        val todos = todoService.getAdminTodosByFilter(userId, filter)
+        return ResponseEntity.ok(todos)
     }
 
     @PostMapping
@@ -107,6 +123,17 @@ class TodoController(private val todoService: TodoService) {
     ): ResponseEntity<Void> {
         val userId = getUserIdFromPrincipal(principal)
         todoService.deleteTodoById(userId, id)
+        return ResponseEntity.noContent().build()
+    }
+
+    @PutMapping("/{id}/restore")
+    @Operation(summary = "👑 Admin: To-Do aus dem Archiv/Papierkorb wiederherstellen")
+    fun restoreTodo(
+        @PathVariable id: String,
+        principal: Principal?
+    ): ResponseEntity<Void> {
+        val userId = getUserIdFromPrincipal(principal)
+        todoService.restoreTodoById(userId, id)
         return ResponseEntity.noContent().build()
     }
 

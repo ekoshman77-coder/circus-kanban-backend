@@ -139,4 +139,10 @@ interface TodoRepository : JpaRepository<TodoEntity, String>, JpaSpecificationEx
 """)
     fun findActiveTeamTodosForUser(@Param("userId") userId: String): List<TodoEntity>
     fun findByUserIdAndMilestoneIdIsNullAndIsArchivedFalse(userId: String): List<TodoEntity>
+    fun findByMilestoneIdIn(milestoneIds: List<String>): List<TodoEntity>
+
+    @Transactional
+    @Modifying
+    @Query("UPDATE TodoEntity t SET t.isArchived = false WHERE t.id = :id")
+    fun restoreById(@Param("id") id: String): Int
 }

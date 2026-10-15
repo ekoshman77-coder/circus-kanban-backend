@@ -13,8 +13,8 @@ import com.backend.todo_api.dto.ProjectMemberDto
 import com.backend.todo_api.exceptions.ActionForbiddenException
 import com.backend.todo_api.exceptions.UserNotFoundException
 import com.backend.todo_api.exceptions.ProjectNotFoundException
-import com.backend.todo_api.exceptions.UserDepartmentNotFoundException
 import com.backend.todo_api.model.ActionType
+import com.backend.todo_api.model.AdminSecurityResource
 import com.backend.todo_api.model.RoleType
 import com.backend.todo_api.model.ScopeType
 import com.backend.todo_api.model.UserSecurityResource
@@ -63,7 +63,7 @@ class ProjectTeamService(
 
             ProjectMemberDto(
                 user = userService.entityToUserResponseDto(user, coffeeAccount),
-                projectRole = membership.role.name?.name ?: "NONE"
+                projectRole = membership.role.name
             )
         }
     }
@@ -138,7 +138,7 @@ class ProjectTeamService(
             val coffeeAccount = coffeeAccountRepository.findById(user.id).orElse(null)
             ProjectMemberDto(
                 user = userService.entityToUserResponseDto(user, coffeeAccount),
-                projectRole = "NONE"
+                projectRole = RoleType.DEVELOPER
             )
         }
     }
@@ -184,7 +184,7 @@ class ProjectTeamService(
 
         return ProjectMemberDto(
             user = userService.entityToUserResponseDto(user, coffeeAccount),
-            projectRole = role.name
+            projectRole = role
         )
     }
 
@@ -263,7 +263,9 @@ class ProjectTeamService(
     @Transactional(readOnly = true)
     fun getAllUsersForAdminBoard(currentUserId: String): List<ProjectMemberDto> {
         val userContexts = userContextResolver.resolveContexts(currentUserId)
-        val userResource = UserSecurityResource(targetUserId = currentUserId, departmentId = null)
+
+        // 🛡️ Benutzt PermissionSecurityResource (oder AdminSecurityResource)
+        val userResource = AdminSecurityResource()
 
         val hasAccess = permissionService.hasPermission(
             userContexts = userContexts,
@@ -271,8 +273,9 @@ class ProjectTeamService(
             resource = userResource
         )
 
+        // 💡 STATT ActionForbiddenException: Einfach eine leere Liste zurückgeben!
         if (!hasAccess) {
-            throw ActionForbiddenException("Keine Admin-Berechtigung für das globale User-Board")
+            return emptyList()
         }
 
         val allApprovedUsers = userRepository.findByIsArchivedFalse()
@@ -281,7 +284,7 @@ class ProjectTeamService(
             val coffeeAccount = coffeeAccountRepository.findById(user.id).orElse(null)
             ProjectMemberDto(
                 user = userService.entityToUserResponseDto(user, coffeeAccount),
-                projectRole = "NONE"
+                projectRole = RoleType.DEVELOPER
             )
         }
     }

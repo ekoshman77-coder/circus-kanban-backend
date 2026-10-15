@@ -18,14 +18,18 @@ import com.backend.todo_api.dto.CreateUserDto
 import com.backend.todo_api.dto.UserApproveDto
 import com.backend.todo_api.dto.UserDto
 import com.backend.todo_api.dto.UserResponseDto
+import com.backend.todo_api.dto.UserUpdateProfileDto
 import com.backend.todo_api.exceptions.ActionForbiddenException
 import com.backend.todo_api.exceptions.UserAlreadyExistsException
+import com.backend.todo_api.exceptions.UserDeletedException
 import com.backend.todo_api.exceptions.UserNotApprovedException
 import com.backend.todo_api.exceptions.UserNotFoundException
 import com.backend.todo_api.model.ActionType
+import com.backend.todo_api.model.ResourceType
 import com.backend.todo_api.model.RoleType
 import com.backend.todo_api.model.UserSecurityResource
 import com.backend.todo_api.model.toEntity
+import com.backend.todo_api.services.UserContextResolver
 import jakarta.transaction.Transactional
 import org.springframework.http.HttpStatus
 import org.springframework.stereotype.Service
@@ -91,7 +95,7 @@ class UserService(
             println("👑 Ur-Admin Registrierung erkannt! Gewählte Abteilung: ${AppConstants.ADMIN_DEPARTMENT_NAME}.")
 
             // 👑 Der Ur-Admin bekommt die Super-Admin Rolle!
-            RoleType.ADMIN_HEAD.toEntity(roleRepository)
+            RoleType.DEPARTMENT_HEAD.toEntity(roleRepository)
         } else {
             // Normale User starten als MEMBER
             RoleType.MEMBER.toEntity(roleRepository)
@@ -127,13 +131,34 @@ class UserService(
         return copyToUserDto(savedEntity, UserDto())
     }
 
+    fun createUser(currentUserId: String, targetUser: CreateUserDto): UserDto {
+        val userContexts = userContextResolver.resolveContexts(currentUserId)
+
+        val canCreate = permissionService.hasPermission(
+            userContexts,
+            ActionType.CREATE,
+            UserSecurityResource(),
+            )
+
+        if (!canCreate) {
+            throw ActionForbiddenException("du darfts keine neue Users erzeugen")
+        }
+
+        return register(targetUser)
+    }
+
     @Transactional
-    fun updateUser(currentUserId: String, targetUserId: String, dto: UserDto): UserDto {
+    fun updateUser(currentUserId: String, targetUserId: String, dto: UserUpdateProfileDto): UserDto {
 
         val userEntity = userRepository.findByIdAndIsArchivedFalse(targetUserId)
             ?: throw UserNotFoundException("Benutzer mit der ID $targetUserId wurde nicht gefunden.")
 
         val userContexts = userContextResolver.resolveContexts(currentUserId)
+
+        println("🔍 [DEBUG] CurrentUserId: $currentUserId")
+        println("🔍 [DEBUG] TargetUserId: $targetUserId")
+        println("🔍 [DEBUG] Resolved Contexts: $userContexts")
+        println("🔍 [DEBUG] Target User DeptId: ${userEntity.departmentId}")
 
         val canAct = permissionService.hasPermission(
             userContexts = userContexts,
@@ -148,12 +173,6 @@ class UserService(
             throw ActionForbiddenException("du kannst Daten des Users nicht ändern")
         }
 
-        if (userEntity.isApproved != dto.isApproved) {
-            throw ResponseStatusException(
-                HttpStatus.FORBIDDEN,
-                "Sicherheitswarnung: Statusänderungen (isApproved) sind über diesen Endpunkt nicht erlaubt!"
-            )
-        }
         userEntity.firstName = dto.firstName
         userEntity.lastName = dto.lastName
         val updatedUser = userRepository.save(userEntity)
@@ -287,6 +306,9 @@ class UserService(
         targetUser.departmentId = dto.departmentId
         targetUser.isApproved = true
         targetUser.departmentRole = dto.departmentRole.toEntity(roleRepository)
+        targetUser.supervisor = dto.supervisorId?.let { id ->
+            userRepository.findById(id).orElse(null)
+        }
 
         val savedUser = userRepository.save(targetUser)
         val coffeeAccount = coffeeAccountRepository.findById(savedUser.id).orElse(null)
@@ -329,6 +351,13 @@ class UserService(
         return adminDept?.id == departmentId
     }
 
+    fun getOwnStatus(userId: String): UserDto {
+        val user = userRepository.findByIdAndIsArchivedFalse(userId)
+            ?: throw UserNotFoundException("Benutzer nicht gefunden.")
+
+        return copyToUserDto(user, UserDto())
+    }
+
     fun UserEntity.toDto(): UserDto {
         return copyToUserDto(this, UserDto())
     }
@@ -350,6 +379,8 @@ class UserService(
         val dto = UserResponseDto()
         val dtoWithUser = copyToUserDto(userEntity, dto) as UserResponseDto
         dtoWithUser.projectIds = userEntity.projectMemberships.map { it.project.id }
+        dtoWithUser.supervisorId = userEntity.supervisor?.id
+        dtoWithUser.supervisorName = userEntity.supervisor?.let { "${it.firstName} ${it.lastName}".trim() }
         return copyCoffeeAccountToResponseDto(coffeeAccountEntity, dtoWithUser)
     }
 

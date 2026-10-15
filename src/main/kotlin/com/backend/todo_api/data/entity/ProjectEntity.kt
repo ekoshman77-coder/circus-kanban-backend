@@ -1,8 +1,10 @@
 package com.backend.todo_api.data.entity
 
 import com.backend.todo_api.dto.ProjectDto
+import com.backend.todo_api.dto.ProjectMemberDto
 import com.backend.todo_api.dto.UserDto
 import jakarta.persistence.*
+import java.time.LocalDateTime
 import java.util.UUID
 
 @Entity
@@ -33,6 +35,13 @@ class ProjectEntity(
     @Column(name = "department_id", nullable = false)
     var departmentId: String = "",
 
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "scope_id", nullable = false)
+    var scope: ScopeEntity = ScopeEntity(),
+
+    @Column(name = "project_streak_covered_until")
+    var projectStreakCoveredUntil: LocalDateTime? = null,
+
     @OneToMany(mappedBy = "project", cascade = [CascadeType.ALL], orphanRemoval = true, fetch = FetchType.EAGER)
     var milestones: MutableList<MilestoneEntity> = mutableListOf(),
 
@@ -48,22 +57,6 @@ class ProjectEntity(
     }
 
     // ✨ Schicke Konvertierungsmethode -> Jetzt angepasst an teamMemberships!
-    fun toDto(): ProjectDto {
-        val dto = ProjectDto()
-        dto.id = this.id
-        dto.userId = this.userId
-        dto.ideaId = this.ideaId
-        dto.title = this.title
-        dto.area = this.area
-        dto.content = this.content
-        dto.status = this.status
-        dto.fullMilestones = this.milestones.map { it.toDto() }
-        dto.departmentId = this.departmentId
-
-        // 🗑️ ENTFARNT: Keine Zuweisung mehr an ein nicht-existierendes DTO-Feld!
-
-        return dto
-    }
 
     fun addTeamMember(user: UserEntity, roleEntity: RoleEntity) {
         val alreadyMember = teamMemberships.any { it.user.id == user.id }

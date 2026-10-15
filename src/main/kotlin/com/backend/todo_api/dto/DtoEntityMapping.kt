@@ -6,8 +6,9 @@ import com.backend.todo_api.data.entity.PlannerSettingsEntity
 import com.backend.todo_api.data.entity.ProjectEntity
 import com.backend.todo_api.data.entity.TodoEntity
 import com.backend.todo_api.data.entity.UserEntity
+import com.backend.todo_api.data.repository.ScopeRepository
+import com.backend.todo_api.model.toEntity
 import java.util.UUID
-
 
 fun PlannerSettingsEntity.toDto() = PlannerSettingsDto(
     userId = id?: "",
@@ -23,7 +24,7 @@ fun PlannerSettingsDto.toEntity() = PlannerSettingsEntity(
     primeTimeEndHour = this.primeTimeEndHour
 )
 
-fun CreateNoteDto.toEntityWithoutId() = NoteEntity (
+fun CreateNoteDto.toEntityWithoutId(scopeRepository: ScopeRepository) = NoteEntity (
     id = UUID.randomUUID().toString(), // Standardmäßig keine ID
     title = this.title,
     content = this.content,
@@ -33,13 +34,14 @@ fun CreateNoteDto.toEntityWithoutId() = NoteEntity (
     isInCalculation = this.isInCalculation,
     temperature = this.temperature,
     weatherCode = this.weatherCode,
-    departmentId = this.departmentId
+    departmentId = this.departmentId,
+    scope = this.scope.toEntity(scopeRepository)
 )
 
-fun CreateNoteDto.toNewEntity() = this.toEntityWithoutId()
+fun CreateNoteDto.toNewEntity(scopeRepository: ScopeRepository) = this.toEntityWithoutId(scopeRepository)
 
-fun NoteDto.toEntity(): NoteEntity {
-    val entity = toEntityWithoutId()
+fun NoteDto.toEntity(scopeRepository: ScopeRepository): NoteEntity {
+    val entity = toEntityWithoutId(scopeRepository)
     entity.id = this.id
     return entity
 }
@@ -54,8 +56,8 @@ fun NoteEntity.toDto() = NoteDto (
     isInCalculation = this.isInCalculation,
     temperature = this.temperature,
     weatherCode = this.weatherCode,
-    departmentId = this.departmentId
-
+    departmentId = this.departmentId,
+    scope = this.scope.name
 )
 
 fun MilestoneDto.toEntity(): MilestoneEntity {

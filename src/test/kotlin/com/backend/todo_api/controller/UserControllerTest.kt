@@ -1,6 +1,7 @@
 package com.backend.todo_api.controller
 
 import com.backend.todo_api.dto.CreateUserDto
+import com.backend.todo_api.exceptions.GlobalExceptionHandler
 import com.backend.todo_api.exceptions.UserAlreadyExistsException
 import com.backend.todo_api.services.UserService
 import com.fasterxml.jackson.databind.ObjectMapper
@@ -13,17 +14,24 @@ import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.status
 import org.springframework.test.web.servlet.setup.MockMvcBuilders
+import org.springframework.validation.beanvalidation.LocalValidatorFactoryBean
 
 class UserControllerTest {
 
     private val userService: UserService = mockk()
     private val userController = UserController(userService)
-    private val mockMvc: MockMvc = MockMvcBuilders.standaloneSetup(userController).build()
+
+    // GlobalExceptionHandler + Validator aktivieren
+    private val mockMvc: MockMvc = MockMvcBuilders
+        .standaloneSetup(userController)
+        .setControllerAdvice(GlobalExceptionHandler())
+        .setValidator(LocalValidatorFactoryBean().apply { afterPropertiesSet() })
+        .build()
+
     private val objectMapper = ObjectMapper()
 
     @Test
     fun `registerUser sollte bei leerem Username ein HTTP 400 Bad Request werfen`() {
-        // 🎯 FIX: Wir übergeben ein gültiges Passwort (min. 6 Zeichen für OnRegisterOrLogin Gruppe)!
         val dto = CreateUserDto(
             username = "   ",
             firstName = "Max",
@@ -37,12 +45,12 @@ class UserControllerTest {
                 .content(objectMapper.writeValueAsString(dto))
         )
             .andExpect(status().isBadRequest)
-            .andExpect(jsonPath("$.error").value("Name darf nicht leer sein!"))
+            .andExpect(jsonPath("$.errorCode").value("INVALID_DATA"))
+            .andExpect(jsonPath("$.message").value("Der Username darf nicht leer sein!"))
     }
 
     @Test
     fun `registerUser sollte bei bereits existierendem User ein HTTP 409 Conflict werfen`() {
-        // 🎯 FIX: Wir füttern das DTO mit allen Pflichtfeldern, inklusive Passwort!
         val dto = CreateUserDto(
             username = "admin",
             firstName = "Admin",
@@ -50,7 +58,6 @@ class UserControllerTest {
             password = "securePassword123"
         )
 
-        // Wir zwingen den Service, deine benutzerdefinierte Exception zu werfen
         every { userService.register(any()) } throws UserAlreadyExistsException("Username bereits vergeben!")
 
         mockMvc.perform(
@@ -59,6 +66,7 @@ class UserControllerTest {
                 .content(objectMapper.writeValueAsString(dto))
         )
             .andExpect(status().isConflict)
-            .andExpect(jsonPath("$.error").value("Username bereits vergeben!"))
+            .andExpect(jsonPath("$.errorCode").value("USER_ALREADY_EXISTS"))
+            .andExpect(jsonPath("$.message").value("Username bereits vergeben!"))
     }
 }

@@ -7,12 +7,13 @@ import com.backend.todo_api.data.entity.UserEntity
 import com.backend.todo_api.data.repository.*
 import com.backend.todo_api.dto.DepartmentDto
 import com.backend.todo_api.dto.UserApproveDto
-import com.backend.todo_api.dto.UserDto
+import com.backend.todo_api.dto.UserUpdateProfileDto
 import com.backend.todo_api.exceptions.ActionForbiddenException
 import com.backend.todo_api.exceptions.UserNotFoundException
 import com.backend.todo_api.model.ActionType
 import com.backend.todo_api.model.RoleType
 import com.backend.todo_api.model.ScopeType
+import com.backend.todo_api.model.UserContext
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.verify
@@ -76,7 +77,7 @@ class UserServiceTest {
     @Test
     fun `updateUser sollte User erfolgreich aktualisieren, wenn Berechtigung vorliegt`() {
         val targetUser = UserEntity(id = targetUserId, firstName = "Old", lastName = "Name", departmentId = "dept-1")
-        val dto = UserDto(firstName = "New", lastName = "Name", isApproved = false)
+        val dto = UserUpdateProfileDto(firstName = "New", lastName = "Name")
 
         every { userRepository.findByIdAndIsArchivedFalse(targetUserId) } returns targetUser
         every { permissionService.hasPermission(mockContexts, ActionType.UPDATE, any()) } returns true
@@ -91,12 +92,12 @@ class UserServiceTest {
     @Test
     fun `updateUser sollte ActionForbiddenException werfen, wenn Berechtigung fehlt`() {
         val targetUser = UserEntity(id = targetUserId, firstName = "Old", lastName = "Name", departmentId = "dept-1")
-        val dto = UserDto(firstName = "New", lastName = "Name", isApproved = false)
+        val dto = UserUpdateProfileDto(firstName = "New", lastName = "Name")
 
         every { userRepository.findByIdAndIsArchivedFalse(targetUserId) } returns targetUser
         every { permissionService.hasPermission(mockContexts, ActionType.UPDATE, any()) } returns false
 
-        assertThrows(ActionForbiddenException::class.java) {
+        assertThrows<ActionForbiddenException> {
             userService.updateUser(currentUserId, targetUserId, dto)
         }
     }
@@ -105,8 +106,8 @@ class UserServiceTest {
     fun `updateUser sollte UserNotFoundException werfen, wenn Ziel-User nicht existiert oder archiviert ist`() {
         every { userRepository.findByIdAndIsArchivedFalse(targetUserId) } returns null
 
-        assertThrows(UserNotFoundException::class.java) {
-            userService.updateUser(currentUserId, targetUserId, UserDto())
+        assertThrows<UserNotFoundException> {
+            userService.updateUser(currentUserId, targetUserId, UserUpdateProfileDto())
         }
     }
 
@@ -138,7 +139,7 @@ class UserServiceTest {
         every { userRepository.findByIdAndIsArchivedFalse(targetUserId) } returns targetUser
         every { permissionService.hasPermission(mockContexts, ActionType.DELETE, any()) } returns false
 
-        assertThrows(ActionForbiddenException::class.java) {
+        assertThrows<ActionForbiddenException> {
             userService.deleteUser(currentUserId, targetUserId)
         }
     }
@@ -180,12 +181,12 @@ class UserServiceTest {
         val currentUserId = "user-123"
         val requestingUser = UserEntity(id = currentUserId, departmentId = "dept-1")
 
-        val roleAdmin = RoleEntity(name = RoleType.ADMIN_HEAD)
+        val roleHead = RoleEntity(name = RoleType.DEPARTMENT_HEAD)
         val scopeDept = ScopeEntity(name = ScopeType.DEPARTMENT)
         val scopeProj = ScopeEntity(name = ScopeType.PROJECT)
 
-        val deptContext = UserContext(scope = scopeDept, scopeInstanceId = "dept-1", role = roleAdmin)
-        val projContext = UserContext(scope = scopeProj, scopeInstanceId = "proj-1", role = roleAdmin)
+        val deptContext = UserContext(scope = scopeDept, scopeInstanceId = "dept-1", role = roleHead)
+        val projContext = UserContext(scope = scopeProj, scopeInstanceId = "proj-1", role = roleHead)
 
         every { userRepository.findById(currentUserId) } returns Optional.of(requestingUser)
         every { userContextResolver.resolveContexts(currentUserId) } returns listOf(deptContext, projContext)
@@ -194,7 +195,6 @@ class UserServiceTest {
         val deptUser = UserEntity(id = "user-dept", firstName = "Dept", lastName = "User", departmentId = "dept-1", isApproved = true)
         val projUser = UserEntity(id = "user-proj", firstName = "Proj", lastName = "User", departmentId = "dept-2", isApproved = true)
 
-        // 🎯 FIX: UserService ruft direkt findByIsApprovedAndIsArchivedFalse(true) auf!
         every { userRepository.findByIsApprovedAndIsArchivedFalse(true) } returns listOf(deptUser, projUser)
         every { coffeeAccountRepository.findById(any()) } returns Optional.of(CoffeeAccountEntity(userId = "dummy"))
         every { departmentService.getDepartmentDtoById(any()) } returns null
@@ -225,5 +225,4 @@ class UserServiceTest {
 
         verify(exactly = 0) { userRepository.findByIsApprovedAndIsArchivedFalse(false) }
     }
-
 }

@@ -22,9 +22,13 @@ class PermissionServiceTest {
     private val deptScope = ScopeEntity(id = "s-dept", name = ScopeType.DEPARTMENT, hierarchyLevel = 30)
     private val resourceScope = ScopeEntity(id = "s-resource", name = ScopeType.RESOURCE, hierarchyLevel = 10)
 
-    private val adminRole = RoleEntity(id = "r-admin", name = RoleType.ADMIN, scope = companyScope)
     private val deptHeadRole = RoleEntity(id = "r-head", name = RoleType.DEPARTMENT_HEAD, scope = deptScope)
     private val memberRole = RoleEntity(id = "r-member", name = RoleType.MEMBER, scope = resourceScope)
+
+    private val adminSpecialization = DepartmentSpecializationEntity(
+        id = "spec-admin",
+        name = DepartmentSpecializationType.ADMIN
+    )
 
     private val actionUpdate = ActionEntity(id = "a-update", name = ActionType.UPDATE)
     private val resourceUser = ResourceEntity(id = "res-user", name = ResourceType.USER)
@@ -34,26 +38,31 @@ class PermissionServiceTest {
         permissionService = PermissionService(rolePermissionRepository, departmentRepository)
     }
 
-    // --- A. ADMIN (COMPANY Scope) TESTS ---
+    // --- A. ADMIN SPEZIALISIERUNG TESTS ---
 
     @Test
-    fun `ADMIN im COMPANY Scope sollte Zugriff haben`() {
+    fun `User mit ADMIN Spezialisierung sollte Zugriff haben`() {
         val adminContext = UserContext(
             scope = companyScope,
             scopeInstanceId = null,
-            role = adminRole
+            role = deptHeadRole,
+            specialization = adminSpecialization
         )
 
-        // Simuliert eine RolePermissionEntity in DB
         val permission = RolePermissionEntity(
-            role = adminRole,
+            role = deptHeadRole,
             action = actionUpdate,
             targetScope = companyScope,
-            resource = resourceUser
+            resource = resourceUser,
+            departmentSpecialization = adminSpecialization
         )
 
         every {
-            rolePermissionRepository.findByActionNameAndResourceName(ActionType.UPDATE, ResourceType.USER)
+            rolePermissionRepository.findByRoleNameInAndActionNameAndResourceName(
+                listOf(RoleType.DEPARTMENT_HEAD),
+                ActionType.UPDATE,
+                ResourceType.USER
+            )
         } returns listOf(permission)
 
         val targetUserResource = UserSecurityResource(targetUserId = "fremder-user", departmentId = "fremde-abteilung")
@@ -85,7 +94,11 @@ class PermissionServiceTest {
         )
 
         every {
-            rolePermissionRepository.findByActionNameAndResourceName(ActionType.UPDATE, ResourceType.USER)
+            rolePermissionRepository.findByRoleNameInAndActionNameAndResourceName(
+                listOf(RoleType.DEPARTMENT_HEAD),
+                ActionType.UPDATE,
+                ResourceType.USER
+            )
         } returns listOf(permission)
 
         val userInSameDept = UserSecurityResource(targetUserId = "user-2", departmentId = "dept-100")
@@ -115,7 +128,11 @@ class PermissionServiceTest {
         )
 
         every {
-            rolePermissionRepository.findByActionNameAndResourceName(ActionType.UPDATE, ResourceType.USER)
+            rolePermissionRepository.findByRoleNameInAndActionNameAndResourceName(
+                listOf(RoleType.DEPARTMENT_HEAD),
+                ActionType.UPDATE,
+                ResourceType.USER
+            )
         } returns listOf(permission)
 
         val userInOtherDept = UserSecurityResource(targetUserId = "user-3", departmentId = "dept-fremd")
@@ -147,7 +164,11 @@ class PermissionServiceTest {
         )
 
         every {
-            rolePermissionRepository.findByActionNameAndResourceName(ActionType.UPDATE, ResourceType.USER)
+            rolePermissionRepository.findByRoleNameInAndActionNameAndResourceName(
+                listOf(RoleType.MEMBER),
+                ActionType.UPDATE,
+                ResourceType.USER
+            )
         } returns listOf(permission)
 
         val ownResource = UserSecurityResource(targetUserId = "user-777")

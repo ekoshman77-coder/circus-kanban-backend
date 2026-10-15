@@ -7,8 +7,8 @@ import com.backend.todo_api.data.repository.ProjectMemberRepository
 import com.backend.todo_api.data.repository.UserRepository
 import com.backend.todo_api.dto.DepartmentDto
 import com.backend.todo_api.dto.SearchUserDto
-import com.backend.todo_api.dto.toDto
 import com.backend.todo_api.exceptions.UserDeletedException
+import com.backend.todo_api.mapper.DepartmentMapper
 import com.backend.todo_api.model.ActionType
 import com.backend.todo_api.model.DepartmentSecurityResource
 import com.backend.todo_api.model.RoleType
@@ -22,7 +22,8 @@ class InvitationService(
     val permissionService: PermissionService,
     val userRepository: UserRepository,
     val departmentRepository: DepartmentRepository,
-    val projectMemberRepository: ProjectMemberRepository
+    val projectMemberRepository: ProjectMemberRepository,
+    val departmentMapper: DepartmentMapper
 ) {
 
     /**
@@ -58,7 +59,7 @@ class InvitationService(
             }
         }
 
-        return resultDepartments.map { it.toDto() }
+        return resultDepartments.map { departmentMapper.toDto(it) }
     }
 
     /**

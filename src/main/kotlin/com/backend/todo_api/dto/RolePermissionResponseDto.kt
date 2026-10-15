@@ -5,5 +5,6 @@ data class RolePermissionResponseDto(
     val role: String,
     val resource: String,
     val action: String,
-    val targetScope: String
+    val targetScope: String,
+    val specialization: String?
 )

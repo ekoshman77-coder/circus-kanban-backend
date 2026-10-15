@@ -24,6 +24,10 @@ class RolePermissionEntity(
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "resource_id", nullable = false)
-    var resource: ResourceEntity = ResourceEntity() // Auf welcher Ebene wird es erlaubt?
+    var resource: ResourceEntity = ResourceEntity(), // Auf welcher Ebene wird es erlaubt?
 
+    // NULLABLE: Wenn gesetzt, gilt dieses Recht NUR für Mitglieder einer Abteilung mit dieser Spezialisierung!
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "department_specialization_id", nullable = true)
+    var departmentSpecialization: DepartmentSpecializationEntity? = null
 )

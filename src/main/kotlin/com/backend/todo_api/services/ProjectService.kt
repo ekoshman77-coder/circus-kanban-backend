@@ -4,14 +4,17 @@ import com.backend.todo_api.data.entity.MilestoneEntity
 import com.backend.todo_api.data.entity.ProjectEntity
 import com.backend.todo_api.data.repository.ProjectMemberRepository
 import com.backend.todo_api.data.repository.ProjectRepository
+import com.backend.todo_api.data.repository.ScopeRepository
 import com.backend.todo_api.data.repository.UserRepository
 import com.backend.todo_api.dto.CreateProjectDto
 import com.backend.todo_api.dto.ProjectDashboardStatsDTO
 import com.backend.todo_api.dto.ProjectDto
+import com.backend.todo_api.dto.ProjectMemberDto
+import com.backend.todo_api.exceptions.ActionForbiddenException
+import com.backend.todo_api.exceptions.ResourceAlreadyExistsException
 import com.backend.todo_api.model.ActionType
-import com.backend.todo_api.model.ProjectSecurityResource
-import com.backend.todo_api.model.ResourceType
 import com.backend.todo_api.model.ScopeType
+import com.backend.todo_api.model.toEntity
 import com.backend.todo_api.model.toSecurityResource
 import jakarta.transaction.Transactional
 import org.springframework.stereotype.Service
@@ -22,14 +25,16 @@ class ProjectService(
     private val userRepository: UserRepository,
     private val projectMemberRepository: ProjectMemberRepository,
     private val userContextResolver: UserContextResolver,
-    private val permissionService: PermissionService
+    private val permissionService: PermissionService,
+    private val scopeRepository: ScopeRepository,
+    private val userService: UserService
 ) {
 
-    fun getProjectsByWithUser(userId: String?): List<ProjectDto> {
+    fun getProjectsByUser(userId: String?): List<ProjectDto> {
         if (userId.isNullOrBlank()) return emptyList()
 
         // 1. Alle Kontexte des Benutzers laden (DEPARTMENT, PROJECT, COMPANY etc.)
-        val userContexts = userContextResolver.resolveContexts(userId)
+        val userContexts = userContextResolver.resolveContexts(userId, ignoreDepartmentSpecialization = true)
 
         // Set verhindert doppelte Einträge (z.B. wenn ein Projekt in der Abteilung liegt UND eine direkte Mitgliedschaft existiert)
         val resultProjects = mutableSetOf<ProjectEntity>()
@@ -87,8 +92,11 @@ class ProjectService(
 
     @Transactional
     fun createProject(userId: String, dto: CreateProjectDto): ProjectDto {
+        if (projectRepository.existsByTitleIgnoreCaseAndStatusNot(dto.title)) {
+            throw ResourceAlreadyExistsException("Ein Projekt mit dem Namen '${dto.title.trim()}' existiert bereits!")
+        }
         // 🏗️ Wir wandeln das DTO um (das Team bleibt dabei komplett LEER)
-        val projectEntity = convertToEntity(dto)
+        val projectEntity = convertToEntity(dto, scopeRepository = scopeRepository)
 
         val userContexts = userContextResolver.resolveContexts(userId)
 
@@ -165,29 +173,100 @@ class ProjectService(
         )
 
         if (!canDelete) {
-            throw SecurityException("Zugriff verweigert: Du hast keine Berechtigung, dieses Projekt zu löschen.")
+            throw ActionForbiddenException("Zugriff verweigert: Du hast keine Berechtigung, dieses Projekt zu löschen.")
         }
         // 🎯 SOFT DELETE statt hard delete! Die KI behält ihre Meilenstein-Daten!
         project.status = "Zip"
         projectRepository.save(project)
     }
 
-    private fun convertToEntity(dto: CreateProjectDto): ProjectEntity {
-        // 🌟 Wir erstellen die nackte Projekt-Entität
+    /**
+     * 👑 Admin-Ansicht: Lädt ALLE aktiven/normalen Projekte der Organisation (status != 'Zip').
+     * Ermöglicht globale Einsicht auch ohne direkte Projekt-Mitgliedschaft.
+     */
+    fun getAllProjectsForAdmin(userId: String): List<ProjectDto> {
+        // 🛡️ Bricht nicht ab / wirft kein 403, sondern liefert leere Liste für Nicht-Admins:
+        if (!permissionService.isAdmin(userId)) {
+            return emptyList()
+        }
+        return projectRepository.findAll().map { it.toDto() }
+    }
+
+    fun getZipProjectsForAdmin(userId: String): List<ProjectDto> {
+        if (!permissionService.isAdmin(userId)) {
+            return emptyList()
+        }
+        return projectRepository.findByStatus("Zip").map { it.toDto() }
+    }
+
+    /**
+     * 👑 Admin-Aktion: Verschiebt ein Projekt in den Zip-Status (Löschen) oder stellt es wieder her.
+     */
+    @Transactional
+    fun setProjectZipStatusForAdmin(userId: String, projectId: String, isZipped: Boolean): ProjectDto {
+        validateAdminAccess(userId)
+
+        val project = projectRepository.findById(projectId)
+            .orElseThrow { RuntimeException("Projekt mit ID $projectId wurde nicht gefunden.") }
+
+        // Wenn reaktiviert wird, setzen wir den Status z. B. zurück auf 'Calculation' (oder alten Status), sonst 'Zip'
+        project.status = if (isZipped) "Zip" else "Calculation"
+        val saved = projectRepository.save(project)
+        return saved.toDto()
+    }
+
+    /**
+     * 🛡️ Hilfsmethode: Prüft Admin-Rechte über den COMPANY-Scope.
+     */
+    private fun validateAdminAccess(userId: String) {
+        val contexts = userContextResolver.resolveContexts(userId, ignoreDepartmentSpecialization = false)
+        val hasCompanyScope = contexts.any { it.scope.name == ScopeType.COMPANY }
+
+        if (!hasCompanyScope) {
+            throw ActionForbiddenException("Zugriff verweigert: Admin-Berechtigung erforderlich.")
+        }
+    }
+
+    private fun ProjectEntity.toDto(): ProjectDto {
+        val dto = ProjectDto()
+        dto.id = this.id
+        dto.userId = this.userId
+        dto.ideaId = this.ideaId
+        dto.title = this.title
+        dto.area = this.area
+        dto.content = this.content
+        dto.status = this.status
+        dto.departmentId = this.departmentId
+        dto.scope = ScopeType.valueOf(this.scope.name.name) // ScopeType Enum
+
+        // ✨ Unified milestones list
+        dto.milestones = this.milestones.map { it.toDto() }
+
+        // ✨ Teammitglieder-Mapping mit UserService
+        dto.teamMembers = this.teamMemberships.map { membership ->
+            ProjectMemberDto(
+                user = userService.entityToUserResponseDto(membership.user, null),
+                projectRole = membership.role.name // ✨ membership.role.name ist bereits ein RoleType!
+            )
+        }
+
+        return dto
+    }
+
+    private fun convertToEntity(dto: CreateProjectDto, scopeRepository: ScopeRepository): ProjectEntity {
+        // 1. Grunddaten der Projekt-Entität erzeugen
         val projectEntity = ProjectEntity(
-            userId = dto.userId, // Das Feld merkt sich weiterhin, WER das Projekt erstellt hat (wichtig für Audits!)
+            userId = dto.userId,
             ideaId = dto.ideaId,
             title = dto.title,
             area = dto.area,
             content = dto.content,
             status = dto.status,
-            departmentId = dto.departmentId
+            departmentId = dto.departmentId,
+            scope = dto.scope.toEntity(scopeRepository)
         )
 
-        // ❌ HIER WAR DIE FEHLERQUELLE: Die gesamte Schleife, die blind "DEVELOPER"
-        // eingetragen hat, wird komplett gelöscht. Das Team ist beim Erstellen leer!
-
-        // 🎯 Meilensteine umwandeln (Das bleibt so, falls beim Erstellen direkt Meilensteine mitkommen)
+        // 2. Falls beim Erstellen schon Meilensteine übergeben wurden (CreateMilestoneDto -> MilestoneEntity)
         dto.milestones.forEach { mDto ->
             val assignedUserEntity = mDto.assignedUserId?.let {
                 userRepository.findById(it).orElse(null)
@@ -200,8 +279,10 @@ class ProjectService(
                 orderIndex = mDto.orderIndex,
                 assignedUser = assignedUserEntity
             )
-            projectEntity.addMilestone(mEntity)
+            projectEntity.addMilestone(mEntity) // Verbindet Meilenstein & Projekt bidirektional
         }
+
+        // Hinweis: Das Team bleibt beim Erstellen leer, da Mitglieder erst später hinzugefügt werden.
 
         return projectEntity
     }

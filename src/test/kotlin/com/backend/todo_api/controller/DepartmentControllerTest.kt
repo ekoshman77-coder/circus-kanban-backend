@@ -1,5 +1,6 @@
 package com.backend.todo_api.controller
 
+import com.backend.todo_api.dto.CreateDepartmentDto
 import com.backend.todo_api.dto.DepartmentDto
 import com.backend.todo_api.exceptions.ActionForbiddenException
 import com.backend.todo_api.model.ScopeType
@@ -37,8 +38,8 @@ class DepartmentControllerTest {
     @Test
     fun `getAllDepartments sollte Liste und HTTP 200 zurueckgeben`() {
         val departments = listOf(
-            DepartmentDto(id = "1", name = "HR", scope = ScopeType.DEPARTMENT),
-            DepartmentDto(id = "2", name = "IT", scope = ScopeType.DEPARTMENT)
+            DepartmentDto(id = "1", name = "HR"),
+            DepartmentDto(id = "2", name = "IT")
         )
 
         every { departmentService.getAllDepartments(mockUserId) } returns departments
@@ -55,8 +56,8 @@ class DepartmentControllerTest {
 
     @Test
     fun `createDepartment sollte HTTP 201 Created und neue Abteilung zurueckgeben`() {
-        val inputDto = DepartmentDto(name = "Marketing", scope = ScopeType.DEPARTMENT)
-        val createdDto = DepartmentDto(id = deptId, name = "Marketing", scope = ScopeType.DEPARTMENT)
+        val inputDto = CreateDepartmentDto(name = "Marketing")
+        val createdDto = DepartmentDto(id = deptId, name = "Marketing")
 
         every { departmentService.createDepartment(mockUserId, inputDto) } returns createdDto
 
@@ -70,7 +71,7 @@ class DepartmentControllerTest {
 
     @Test
     fun `createDepartment sollte ActionForbiddenException durchreichen`() {
-        val inputDto = DepartmentDto(name = "Marketing")
+        val inputDto = CreateDepartmentDto(name = "Marketing")
 
         every { departmentService.createDepartment(mockUserId, inputDto) } throws ActionForbiddenException("Keine Rechte")
 
@@ -83,16 +84,16 @@ class DepartmentControllerTest {
 
     @Test
     fun `updateDepartment sollte HTTP 200 OK und aktualisierte Abteilung zurueckgeben`() {
-        val updateDto = DepartmentDto(name = "New HR Name")
+        val updateDto = DepartmentDto(id = deptId, name = "New HR Name")
         val resultDto = DepartmentDto(id = deptId, name = "New HR Name")
 
-        every { departmentService.updateDepartment(mockUserId, deptId, "New HR Name") } returns resultDto
+        every { departmentService.updateDepartment(mockUserId, deptId, updateDto) } returns resultDto
 
         val response = departmentController.updateDepartment(deptId, updateDto, principal)
 
         assertEquals(HttpStatus.OK, response.statusCode)
         assertEquals("New HR Name", response.body?.name)
-        verify(exactly = 1) { departmentService.updateDepartment(mockUserId, deptId, "New HR Name") }
+        verify(exactly = 1) { departmentService.updateDepartment(mockUserId, deptId, resultDto) }
     }
 
     // --- 4. DELETE /api/departments/{id} ---

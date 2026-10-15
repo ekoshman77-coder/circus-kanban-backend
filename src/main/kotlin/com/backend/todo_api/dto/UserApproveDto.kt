@@ -8,5 +8,6 @@ data class UserApproveDto(
     @field:NotBlank(message = "Department id darf nicht leer sein!")
     var departmentId: String = "",
     @field:NotNull(message = "Department role darf nicht leer sein!")
-    val departmentRole: RoleType
+    val departmentRole: RoleType,
+    var supervisorId: String? = null
 )

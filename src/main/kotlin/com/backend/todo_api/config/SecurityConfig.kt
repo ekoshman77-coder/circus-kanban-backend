@@ -70,8 +70,8 @@ class SecurityConfig {
                 val source = UrlBasedCorsConfigurationSource()
                 val config = CorsConfiguration()
                 config.allowedOrigins = listOf("http://localhost:4200")
-                config.allowedMethods = listOf("GET", "POST", "PUT", "DELETE", "OPTIONS")
-                config.allowedHeaders = listOf("Authorization", "Cache-Control", "Content-Type", "X-XSRF-TOKEN")
+                config.allowedMethods = listOf("GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS")
+                config.allowedHeaders = listOf("*")
                 config.exposedHeaders = listOf("X-XSRF-TOKEN")
                 config.allowCredentials = true
                 source.registerCorsConfiguration("/**", config)
