@@ -30,11 +30,11 @@ class ProjectService(
     private val userService: UserService
 ) {
 
-    fun getProjectsByWithUser(userId: String?): List<ProjectDto> {
+    fun getProjectsByUser(userId: String?): List<ProjectDto> {
         if (userId.isNullOrBlank()) return emptyList()
 
         // 1. Alle Kontexte des Benutzers laden (DEPARTMENT, PROJECT, COMPANY etc.)
-        val userContexts = userContextResolver.resolveContexts(userId)
+        val userContexts = userContextResolver.resolveContexts(userId, ignoreDepartmentSpecialization = true)
 
         // Set verhindert doppelte Einträge (z.B. wenn ein Projekt in der Abteilung liegt UND eine direkte Mitgliedschaft existiert)
         val resultProjects = mutableSetOf<ProjectEntity>()
@@ -178,6 +178,53 @@ class ProjectService(
         // 🎯 SOFT DELETE statt hard delete! Die KI behält ihre Meilenstein-Daten!
         project.status = "Zip"
         projectRepository.save(project)
+    }
+
+    /**
+     * 👑 Admin-Ansicht: Lädt ALLE aktiven/normalen Projekte der Organisation (status != 'Zip').
+     * Ermöglicht globale Einsicht auch ohne direkte Projekt-Mitgliedschaft.
+     */
+    fun getAllProjectsForAdmin(userId: String): List<ProjectDto> {
+        // 🛡️ Bricht nicht ab / wirft kein 403, sondern liefert leere Liste für Nicht-Admins:
+        if (!permissionService.isAdmin(userId)) {
+            return emptyList()
+        }
+        return projectRepository.findAll().map { it.toDto() }
+    }
+
+    fun getZipProjectsForAdmin(userId: String): List<ProjectDto> {
+        if (!permissionService.isAdmin(userId)) {
+            return emptyList()
+        }
+        return projectRepository.findByStatus("Zip").map { it.toDto() }
+    }
+
+    /**
+     * 👑 Admin-Aktion: Verschiebt ein Projekt in den Zip-Status (Löschen) oder stellt es wieder her.
+     */
+    @Transactional
+    fun setProjectZipStatusForAdmin(userId: String, projectId: String, isZipped: Boolean): ProjectDto {
+        validateAdminAccess(userId)
+
+        val project = projectRepository.findById(projectId)
+            .orElseThrow { RuntimeException("Projekt mit ID $projectId wurde nicht gefunden.") }
+
+        // Wenn reaktiviert wird, setzen wir den Status z. B. zurück auf 'Calculation' (oder alten Status), sonst 'Zip'
+        project.status = if (isZipped) "Zip" else "Calculation"
+        val saved = projectRepository.save(project)
+        return saved.toDto()
+    }
+
+    /**
+     * 🛡️ Hilfsmethode: Prüft Admin-Rechte über den COMPANY-Scope.
+     */
+    private fun validateAdminAccess(userId: String) {
+        val contexts = userContextResolver.resolveContexts(userId, ignoreDepartmentSpecialization = false)
+        val hasCompanyScope = contexts.any { it.scope.name == ScopeType.COMPANY }
+
+        if (!hasCompanyScope) {
+            throw ActionForbiddenException("Zugriff verweigert: Admin-Berechtigung erforderlich.")
+        }
     }
 
     private fun ProjectEntity.toDto(): ProjectDto {

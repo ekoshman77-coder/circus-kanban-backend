@@ -73,11 +73,10 @@ class RolePermissionAdminService(
 
     private fun verifyAdminPermission(userId: String, requiredAction: ActionType) {
         val userContexts = userContextResolver.resolveContexts(userId)
-
         val hasPermission = permissionService.hasPermission(
             userContexts = userContexts,
             resource = AdminSecurityResource(),
-            action = requiredAction,
+            action = requiredAction
         )
 
         if (!hasPermission) {

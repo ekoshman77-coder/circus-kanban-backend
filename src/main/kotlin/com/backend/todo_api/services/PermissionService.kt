@@ -12,8 +12,24 @@ import org.springframework.transaction.annotation.Transactional
 @Service
 class PermissionService(
     private val rolePermissionRepository: RolePermissionRepository,
-    private val departmentRepository: DepartmentRepository
+    private val userContextResolver: UserContextResolver
 ) {
+    /**
+     * 🛡️ Zentrale Admin-Prüfung für das gesamte Backend.
+     * Prüft, ob der User Admin-Berechtigungen besitzt.
+     */
+    fun isAdmin(userId: String): Boolean {
+        if (userId.isBlank()) return false
+
+        val userContexts = userContextResolver.resolveContexts(userId)
+
+        // Nutzt die bestehende dynamische Rechteprüfung für Admin-Ressourcen/Aktionen
+        return hasPermission(
+            userContexts = userContexts,
+            action = ActionType.READ,
+            resource = AdminSecurityResource()
+        )
+    }
 
     fun hasPermission(
         userContexts: List<UserContext>,

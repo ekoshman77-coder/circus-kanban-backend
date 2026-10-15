@@ -232,5 +232,19 @@ class PermissionInitializer(
                 }
             }
         }
+
+        // 🎯 2. Speziell für To-Dos: Der Admin darf sie im Admin-Board betrachten (READ) und verwalten/archivieren (DELETE),
+        // aber bewusst NICHT den Inhalt frei editieren (kein allgemeines UPDATE auf fremde Todos, um Ideen/Inhalte zu schützen).
+        listOf(RoleType.MEMBER, RoleType.DEPARTMENT_HEAD).forEach { role ->
+            listOf(ActionType.READ, ActionType.DELETE).forEach { action ->
+                rolePermissionService.createPermissionIfNotExists(
+                    roleType = role,
+                    resourceType = ResourceType.TODO,
+                    actionType = action,
+                    scopeType = ScopeType.COMPANY,
+                    specializationType = DepartmentSpecializationType.ADMIN
+                )
+            }
+        }
     }
 }

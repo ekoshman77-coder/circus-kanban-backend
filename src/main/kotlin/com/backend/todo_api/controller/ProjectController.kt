@@ -20,7 +20,7 @@ class ProjectController(private val projectService: ProjectService) {
     ): ResponseEntity<List<ProjectDto>> {
         val userId = getUserIdFromPrincipal(principal)
         // Reicht die userId an den überarbeiteten Service weiter
-        val projects = projectService.getProjectsByWithUser(userId)
+        val projects = projectService.getProjectsByUser(userId)
         return ResponseEntity.ok(projects)
     }
 
@@ -69,5 +69,34 @@ class ProjectController(private val projectService: ProjectService) {
     fun getDashboardStatistics(@PathVariable userId: String): ResponseEntity<ProjectDashboardStatsDTO> {
         val stats = projectService.getDashboardStatistics(userId)
         return ResponseEntity.ok(stats)
+    }
+
+    @GetMapping("/admin/all")
+    fun getAllProjectsForAdmin(
+        principal: Principal?
+    ): ResponseEntity<List<ProjectDto>> {
+        val userId = getUserIdFromPrincipal(principal)
+        val projects = projectService.getAllProjectsForAdmin(userId)
+        return ResponseEntity.ok(projects)
+    }
+
+    @GetMapping("/admin/zipped")
+    fun getZipProjectsForAdmin(
+        principal: Principal?
+    ): ResponseEntity<List<ProjectDto>> {
+        val userId = getUserIdFromPrincipal(principal)
+        val projects = projectService.getZipProjectsForAdmin(userId)
+        return ResponseEntity.ok(projects)
+    }
+
+    @PatchMapping("/admin/{projectId}/zip")
+    fun setProjectZipStatusForAdmin(
+        @PathVariable projectId: String,
+        @RequestParam isZipped: Boolean,
+        principal: Principal?
+    ): ResponseEntity<ProjectDto> {
+        val userId = getUserIdFromPrincipal(principal)
+        val updatedProject = projectService.setProjectZipStatusForAdmin(userId, projectId, isZipped)
+        return ResponseEntity.ok(updatedProject)
     }
 }

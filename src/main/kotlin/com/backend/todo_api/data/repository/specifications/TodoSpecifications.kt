@@ -26,11 +26,41 @@ object TodoSpecifications {
     }
 
     /**
+     * 🗑️ Archiv- & Papierkorb-Status (isArchived)
+     */
+    fun isArchived(isArchived: Boolean): Specification<TodoEntity> {
+        return Specification { root, _, builder ->
+            builder.equal(root.get<Boolean>("isArchived"), isArchived)
+        }
+    }
+
+    /**
+     * 📅 Erstellungszeitraum (fromDate .. toDate)
+     */
+    fun isCreatedBetween(fromDate: Long?, toDate: Long?): Specification<TodoEntity> {
+        return Specification { root, _, builder ->
+            val predicates = mutableListOf<jakarta.persistence.criteria.Predicate>()
+
+            fromDate?.let {
+                predicates.add(builder.greaterThanOrEqualTo(root.get("createdAt"), it))
+            }
+            toDate?.let {
+                predicates.add(builder.lessThanOrEqualTo(root.get("createdAt"), it))
+            }
+
+            if (predicates.isEmpty()) builder.conjunction() else builder.and(*predicates.toTypedArray())
+        }
+    }
+
+    /**
      * 🏢 Firmen-Scope (COMPANY)
      */
     fun isCompanyScope(): Specification<TodoEntity> {
-        return Specification { _, _, builder ->
-            builder.conjunction() // Keine Einschränkung auf Scope-Ebene
+        return Specification { root, _, builder ->
+            builder.and(
+                builder.isNotNull(root.get<String>("milestoneId")),
+                builder.notEqual(root.get<String>("milestoneId"), "")
+            )
         }
     }
 

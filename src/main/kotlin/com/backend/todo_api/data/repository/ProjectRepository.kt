@@ -43,4 +43,8 @@ interface ProjectRepository : JpaRepository<ProjectEntity, String> {
     ): List<ProjectEntity>
 
     fun existsByTitleIgnoreCaseAndStatusNot(title: String, status: String = "Zip"): Boolean
+
+    // In ProjectRepository.kt ist `findByStatusNot("Zip")` schon vorhanden!
+    // Wir fügen nur noch eine Abfrage für gezippte Projekte hinzu:
+    fun findByStatus(status: String = "Zip"): List<ProjectEntity>
 }

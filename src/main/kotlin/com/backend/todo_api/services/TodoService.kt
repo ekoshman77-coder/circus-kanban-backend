@@ -5,6 +5,7 @@ import com.backend.todo_api.data.repository.MilestoneRepository
 import com.backend.todo_api.data.repository.TodoRepository
 import com.backend.todo_api.data.repository.UserRepository
 import com.backend.todo_api.data.repository.specifications.TodoSpecifications
+import com.backend.todo_api.dto.AdminTodoFilterDto
 import com.backend.todo_api.dto.CreateTodoDto
 import com.backend.todo_api.dto.GamificationResult
 import com.backend.todo_api.dto.QuickPanelMode
@@ -26,6 +27,7 @@ import org.springframework.stereotype.Service
 import com.backend.todo_api.validation.*
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
+import org.springframework.data.jpa.domain.Specification
 import org.springframework.transaction.annotation.Transactional
 
 @Service
@@ -134,18 +136,79 @@ class TodoService (
         return todoRepository.findByIsArchivedFalse().map { mapToDto(it) }
     }
 
+    fun getRelevantTodos(userId: String, daysLookback: Int = 30 ): List<TodoDto> {
+        return getRelevantTodos(userId, true, daysLookback)
+    }
+
+    fun getAdminTodosByFilter(userId: String, filter: AdminTodoFilterDto): List<TodoDto> {
+        // 🛡️ 1. Sicherheits-Check: Nur für Admins
+        if (!permissionService.isAdmin(userId)) {
+            return emptyList()
+        }
+
+        // 🛡️ 2. Schutz vor Datenflut: Ein Haupt-Filter muss gesetzt sein
+        val hasValidFilter = !filter.departmentId.isNullOrBlank() ||
+                !filter.projectId.isNullOrBlank() ||
+                !filter.targetUserId.isNullOrBlank() ||
+                filter.isArchived == true
+
+        if (!hasValidFilter) {
+            return emptyList()
+        }
+
+        // 1. Neutrale Start-Specification (entspricht "immer wahr")
+        var spec = Specification<TodoEntity> { _, _, builder -> builder.conjunction() }
+
+        // A) Abteilungs-Filter
+        if (!filter.departmentId.isNullOrBlank()) {
+            spec = spec.and(TodoSpecifications.isDepartmentScope(filter.departmentId))
+        }
+
+        // B) Projekt-Filter
+        if (!filter.projectId.isNullOrBlank()) {
+            spec = spec.and(TodoSpecifications.isProjectScope(filter.projectId))
+        }
+
+        // C) Privater User-Filter
+        if (!filter.targetUserId.isNullOrBlank()) {
+            spec = spec.and(TodoSpecifications.isPrivateResourceScope(filter.targetUserId))
+        }
+
+        // D) Papierkorb- / Archiv-Status
+        val isArchived = filter.isArchived ?: false
+        spec = spec.and(TodoSpecifications.isArchived(isArchived))
+
+        // E) Erstellungs-Zeitraum
+        if (filter.fromDate != null || filter.toDate != null) {
+            spec = spec.and(TodoSpecifications.isCreatedBetween(filter.fromDate, filter.toDate))
+        }
+
+        // Ausführung über das Repository
+        return todoRepository.findAll(spec).map { mapToDto(it) }
+    }
+
+    fun restoreTodoById(userId: String, id: String) {
+        if (!permissionService.isAdmin(userId)) {
+            throw ActionForbiddenException("Nur Admins dürfen To-Dos aus dem Archiv wiederherstellen.")
+        }
+        val updatedRows = todoRepository.restoreById(id)
+        if (updatedRows == 0) {
+            throw TodoNotFoundException("Das To-Do konnte nicht gefunden werden.")
+        }
+    }
+
     /**
      * 📋 Holt alle für den User relevanten To-Dos (inkl. Projekt- & Privat-Tickets).
      * Validiert zuerst den User, um verwaiste Sessions sofort zu kicken.
      */
-    fun getRelevantTodos(userId: String, daysLookback: Int = 30): List<TodoDto> {
+    private fun getRelevantTodos(userId: String, ignoreSpecialization: Boolean, daysLookback: Int = 30): List<TodoDto> {
         validateUserExists(userId, userRepository)
 
         // 1. Cutoff-Date berechnen (z. B. JETZT minus 30 Tage in Millisekunden)
         val cutoffDate = System.currentTimeMillis() - (daysLookback.toLong() * 24 * 60 * 60 * 1000)
 
         // 2. User-Kontexte laden
-        val contexts = userContextResolver.resolveContexts(userId)
+        val contexts = userContextResolver.resolveContexts(userId, ignoreDepartmentSpecialization = ignoreSpecialization)
 
         // 3. Aus allen Kontexten Specifications bauen und per OR verknüpfen
         val combinedScopeSpec = contexts.mapNotNull { context ->
