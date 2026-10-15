@@ -2,7 +2,8 @@ package com.backend.todo_api.controller
 
 import com.backend.todo_api.dto.PredictionRequest
 import com.backend.todo_api.model.AiContextType // 👑 Import für das Enum!
-import com.backend.todo_api.services.SmartPlannerService // 👑 Import für den neuen Service!
+import com.backend.todo_api.services.BayesPlannerService // 👑 Import für den neuen Service!
+import com.backend.todo_api.services.PlannerCoordinator
 import com.backend.todo_api.services.TrainManager
 import com.fasterxml.jackson.databind.ObjectMapper
 import io.mockk.every
@@ -20,10 +21,11 @@ class AIControllerTest {
 
     // 1. Wir mocken beide Services, die der Controller braucht!
     private val trainManager: TrainManager = mockk()
-    private val smartPlannerService: SmartPlannerService = mockk() // 🚀 Neu dazu-gemockt!
+    private val bayesPlannerService: BayesPlannerService = mockk()
+    private val plannerCoordinator: PlannerCoordinator = mockk()
 
     // 2. Wir übergeben beide Mocks brav an den Controller-Konstruktor
-    private val aiController = AIController(trainManager = trainManager, smartPlannerService = smartPlannerService)
+    private val aiController = AIController(trainManager = trainManager, plannerCoordinator = plannerCoordinator)
 
     private val mockMvc: MockMvc = MockMvcBuilders.standaloneSetup(aiController).build()
     private val objectMapper = ObjectMapper()

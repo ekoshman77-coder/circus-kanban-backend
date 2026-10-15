@@ -1,16 +1,9 @@
 package com.backend.todo_api.services
 
-import com.backend.todo_api.data.entity.TodoEntity
-import com.backend.todo_api.data.repository.AiFocusSampleRepository
-import com.backend.todo_api.data.repository.TodoRepository
 import com.backend.todo_api.model.FocusType
 import com.backend.todo_api.utils.AiTextUtil
 import org.springframework.stereotype.Service
-import java.time.LocalTime
 import java.util.concurrent.ConcurrentHashMap
-import kotlin.collections.emptyList
-import kotlin.comparisons.compareBy
-import kotlin.comparisons.compareByDescending
 import kotlin.math.log
 
 @Service
