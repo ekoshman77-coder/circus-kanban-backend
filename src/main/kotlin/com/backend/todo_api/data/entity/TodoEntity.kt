@@ -57,5 +57,11 @@ class TodoEntity(
     var snoozedUntil: Long = 0L, // ⏱️ Der Zeitstempel, bis wann geschlummert wird!
 
     @Column(name = "streak_already_rewarded")
-    var streakAlreadyRewarded: Boolean = false
+    var streakAlreadyRewarded: Boolean = false,
+
+    @Column(name = "is_sensitive", nullable = false)
+    var isSensitive: Boolean = false,
+
+    @Column(name = "sensitive_matches_json", columnDefinition = "TEXT")
+    var sensitiveMatchesJson: String? = null // Speichert die Matches als JSON-String
 )

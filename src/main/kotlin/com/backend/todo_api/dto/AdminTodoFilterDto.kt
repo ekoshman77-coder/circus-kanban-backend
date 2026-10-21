@@ -6,5 +6,6 @@ data class AdminTodoFilterDto(
     val isArchived: Boolean? = false,
     val fromDate: Long? = null,
     val toDate: Long? = null,
-    val targetUserId: String? = null
+    val targetUserId: String? = null,
+    val onlySensitive: Boolean = false
 )

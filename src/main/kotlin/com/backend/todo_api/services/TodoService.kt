@@ -9,6 +9,7 @@ import com.backend.todo_api.dto.AdminTodoFilterDto
 import com.backend.todo_api.dto.CreateTodoDto
 import com.backend.todo_api.dto.GamificationResult
 import com.backend.todo_api.dto.QuickPanelMode
+import com.backend.todo_api.dto.SanitizationFeedbackDto
 import com.backend.todo_api.dto.SyncResultDto
 import com.backend.todo_api.dto.TodoBulkDto
 import com.backend.todo_api.dto.TodoDto
@@ -20,15 +21,21 @@ import com.backend.todo_api.model.AiContextType
 import com.backend.todo_api.model.FocusType
 import com.backend.todo_api.model.RoleType
 import com.backend.todo_api.model.ScopeType
+import com.backend.todo_api.model.SensitiveMatch
 import com.backend.todo_api.model.TodoSecurityResource
 import com.backend.todo_api.providers.AiGlobalDataProvider
 import com.backend.todo_api.utils.AiTextUtil
 import org.springframework.stereotype.Service
 import com.backend.todo_api.validation.*
+import com.fasterxml.jackson.core.type.TypeReference
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
 import org.springframework.data.jpa.domain.Specification
 import org.springframework.transaction.annotation.Transactional
+import tools.jackson.databind.DeserializationFeature
+import tools.jackson.databind.ObjectMapper
+import tools.jackson.databind.json.JsonMapper
+import tools.jackson.module.kotlin.KotlinModule
 
 @Service
 class TodoService (
@@ -39,8 +46,14 @@ class TodoService (
     private val milestoneRepository: MilestoneRepository,
     private val permissionService: PermissionService,
     private val userContextResolver: UserContextResolver,
-
+    private val sanitizationService: SanitizationService
     ) {
+
+    private val objectMapper: ObjectMapper = JsonMapper.builder()
+        .addModule(KotlinModule.Builder().build())
+        .disable(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES)
+        .build()
+
     // 1. NEUERSTELLUNG: Wandelt CreateTodoDto in eine neue Entity um und initialisiert versteckte Felder
     private fun mapToNewEntity(dto: CreateTodoDto): TodoEntity {
         return TodoEntity(
@@ -94,8 +107,19 @@ class TodoService (
         return existingEntity
     }
 
-    // 3. ANTWORT: Wandelt eine DB-Entity in ein fressbares DTO fürs Frontend um
     fun mapToDto(entity: TodoEntity): TodoDto {
+        val matches = if (!entity.sensitiveMatchesJson.isNullOrBlank()) {
+            try {
+                // In Jackson 3 parsen wir es als Array und wandeln es direkt in eine Liste um:
+                val array = objectMapper.readValue(entity.sensitiveMatchesJson, Array<SensitiveMatch>::class.java)
+                array?.toList() ?: emptyList()
+            } catch (e: Exception) {
+                emptyList()
+            }
+        } else {
+            emptyList()
+        }
+
         return TodoDto(
             id = entity.id ?: "",
             task = entity.task,
@@ -115,8 +139,30 @@ class TodoService (
             teamStatus = entity.teamStatus,
             lastDeveloperId = entity.lastDeveloperId,
             reviewerId = entity.reviewerId,
-            reviewerUsedEffort = entity.reviewerUsedEffort
+            reviewerUsedEffort = entity.reviewerUsedEffort,
+
+            // 🎯 NEU ans Frontend übergeben
+            isSensitive = entity.isSensitive,
+            sensitiveMatches = matches
         )
+    }
+
+    private fun updateSensitivityIfChanged(entity: TodoEntity, newDescription: String?, oldDescription: String?) {
+        // 🚀 Performance-Booster: Wenn sich die Beschreibung nicht geändert hat, Scanner überspringen!
+        if (newDescription == oldDescription && entity.sensitiveMatchesJson != null) {
+            return
+        }
+
+        if (newDescription.isNullOrBlank()) {
+            entity.isSensitive = false
+            entity.sensitiveMatchesJson = null
+            return
+        }
+
+        // Scanner ausführen (wir müssen SanitizationService in TodoService injizieren)
+        val result = sanitizationService.scanAndEvaluate(newDescription)
+        entity.isSensitive = !result.matches.isEmpty()
+        entity.sensitiveMatchesJson = objectMapper.writeValueAsString(result.matches)
     }
 
     fun getArchiveStats(): String {
@@ -150,7 +196,8 @@ class TodoService (
         val hasValidFilter = !filter.departmentId.isNullOrBlank() ||
                 !filter.projectId.isNullOrBlank() ||
                 !filter.targetUserId.isNullOrBlank() ||
-                filter.isArchived == true
+                filter.isArchived == true ||
+                filter.onlySensitive
 
         if (!hasValidFilter) {
             return emptyList()
@@ -181,6 +228,10 @@ class TodoService (
         // E) Erstellungs-Zeitraum
         if (filter.fromDate != null || filter.toDate != null) {
             spec = spec.and(TodoSpecifications.isCreatedBetween(filter.fromDate, filter.toDate))
+        }
+
+        if (filter.onlySensitive) {
+            spec = spec.and( TodoSpecifications.isSensitive(true) )
         }
 
         // Ausführung über das Repository
@@ -282,6 +333,8 @@ class TodoService (
             throw ActionForbiddenException("Du kannst dieses Todo nicht erzeugen")
         }
 
+        updateSensitivityIfChanged(entity, dto.description, null)
+
         val savedEntity = todoRepository.save(entity)
 
         if (dto.done && dto.milestoneId != null) {
@@ -309,9 +362,11 @@ class TodoService (
             oldTodo.effortChangesCount += 1
         }
 
+        val previousDescription = oldTodo.description
+
         // Frontend-Felder auf die Entity übertragen
         val updatedEntity = mergeDtoIntoEntity(dto, oldTodo)
-
+        updateSensitivityIfChanged(updatedEntity, updatedEntity.description, previousDescription)
         // Meilenstein-Fortschritt korrigieren, falls das Todo VORHER erledigt war
         if (oldDone && !oldMilestoneId.isNullOrBlank()) {
             milestoneService.recalculateMilestoneProgress(
@@ -532,6 +587,58 @@ class TodoService (
         }
 
         return authorizedTodos.map { mapToDto(it) }
+    }
+
+    /**
+     * 🧹 Admin-Aktion: Verarbeitet das Feedback des Admins, bereinigt die Beschreibung des To-Dos,
+     * bewertet die Sensitivität neu und speichert das To-Do zentral in der Datenbank.
+     */
+    @Transactional
+    fun applySanitizationToTodo(userId: String, feedbackDto: SanitizationFeedbackDto): TodoDto {
+        // 1. Berechtigung prüfen (Nur Admins dürfen To-Dos bereinigen)
+        if (!permissionService.isAdmin(userId)) {
+            throw ActionForbiddenException("Nur Admins dürfen To-Dos bereinigen.")
+        }
+
+        // 2. Das KI-System lernt aus dem Feedback
+        sanitizationService.processFeedback(feedbackDto)
+
+        // 3. To-Do aus der Datenbank laden
+        val todoEntity = todoRepository.findById(feedbackDto.todoId).orElseThrow {
+            TodoNotFoundException("To-Do mit ID ${feedbackDto.todoId} wurde nicht gefunden.")
+        }
+
+        // 4. Nur die bestätigten (approved) Matches herausfiltern
+        val approvedMatches = feedbackDto.feedbacks
+            .filter { it.feedback }
+            .map { item ->
+                SensitiveMatch(
+                    startIndex = item.match.startIndex,
+                    endIndex = item.match.endIndex,
+                    patternId = item.match.patternId,
+                    reason = item.match.reason,
+                    isApproved = item.match.isApproved
+                )
+            }
+
+        // 5. Text über den SanitizationService schwärzen und neu scannen lassen
+        val result = sanitizationService.sanitizeAndEvaluateText(
+            originalText = todoEntity.description,
+            approvedMatches = approvedMatches
+        )
+
+        // 6. Werte aktualisieren
+        todoEntity.description = result.cleanedText
+        todoEntity.isSensitive = result.isSensitive
+        todoEntity.sensitiveMatchesJson = if (result.matches.isEmpty()) {
+            null
+        } else {
+            objectMapper.writeValueAsString(result.matches)
+        }
+
+        // 7. Speichern und aktualisiertes DTO zurückgeben
+        val savedEntity = todoRepository.save(todoEntity)
+        return mapToDto(savedEntity)
     }
 
     fun getCategoryTrainingPairs(): List<Pair<String, String>> {
