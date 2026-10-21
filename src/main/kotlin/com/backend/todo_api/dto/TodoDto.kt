@@ -1,5 +1,7 @@
 package com.backend.todo_api.dto
 
+import com.backend.todo_api.model.SensitiveMatch
+
 open class CreateTodoDto(
     val task: String = "",
     val description: String? = null,
@@ -41,7 +43,10 @@ open class TodoDto(
     teamStatus: String = "BACKLOG",
     lastDeveloperId: String? = null,
     reviewerId: String? = null,
-    reviewerUsedEffort: Double? = null
+    reviewerUsedEffort: Double? = null,
+    // 🎯 NEU: Sensitivitäts-Felder fürs Frontend
+    val isSensitive: Boolean = false,
+    val sensitiveMatches: List<SensitiveMatch>? = emptyList()
 ) : CreateTodoDto(
     task,
     description,

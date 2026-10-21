@@ -14,6 +14,7 @@ class PermissionServiceTest {
 
     private val rolePermissionRepository: RolePermissionRepository = mockk()
     private val departmentRepository: DepartmentRepository = mockk()
+    private val userContextResolver: UserContextResolver = mockk()
 
     private lateinit var permissionService: PermissionService
 
@@ -35,7 +36,7 @@ class PermissionServiceTest {
 
     @BeforeEach
     fun setUp() {
-        permissionService = PermissionService(rolePermissionRepository, departmentRepository)
+        permissionService = PermissionService(rolePermissionRepository, userContextResolver)
     }
 
     // --- A. ADMIN SPEZIALISIERUNG TESTS ---

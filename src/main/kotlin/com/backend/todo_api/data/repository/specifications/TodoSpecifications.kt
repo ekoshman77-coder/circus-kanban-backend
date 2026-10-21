@@ -123,4 +123,10 @@ object TodoSpecifications {
             )
         }
     }
+
+    fun isSensitive(isSensitive: Boolean): Specification<TodoEntity> {
+        return Specification { root, _, builder ->
+            builder.equal(root.get<Boolean>("isSensitive"), isSensitive)
+        }
+    }
 }

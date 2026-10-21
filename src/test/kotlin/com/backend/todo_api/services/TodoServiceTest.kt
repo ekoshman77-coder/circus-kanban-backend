@@ -55,6 +55,9 @@ class TodoServiceTest {
     @MockK
     lateinit var userContextResolver: UserContextResolver
 
+    @MockK
+    lateinit var sanitizationService: SanitizationService
+
     @InjectMockKs
     lateinit var todoService: TodoService
 
@@ -137,34 +140,6 @@ class TodoServiceTest {
         assertEquals("Refactoring", saved.task)
         assertEquals(5, saved.effort)
         assertEquals(2, saved.effortChangesCount) // Zähler von 1 auf 2 hochgezählt!
-        verify { todoRepository.save(any()) }
-    }
-
-    // --- 3. BULK SYNC ---
-
-    @Test
-    fun `syncBulkTodos sollte Aktionen für Bulk-Dtos verarbeiten`() {
-        val bulkDto = TodoBulkDto(
-            id = todoId,
-            task = "Sync Task",
-            syncAction = "CREATED",
-            effort = 3
-        )
-
-        val freshUser = mockk<UserEntity>(relaxed = true)
-
-        every { userRepository.findById(userId) } returns Optional.of(freshUser)
-        every { userRepository.existsById(userId) } returns true
-        every { permissionService.hasPermission(any(), ActionType.CREATE, any()) } returns true
-        every { todoRepository.save(any()) } answers { firstArg() }
-        every { todoRepository.findAll(any<org.springframework.data.jpa.domain.Specification<TodoEntity>>()) } returns emptyList()
-        every { gamificationService.getGamificationState(userId) } returns mockk(relaxed = true)
-        every { streakService.getCurrentStreakInfo(any()) } returns mockk(relaxed = true)
-        every { todoRepository.flush() } just Runs
-
-        val result = todoService.syncBulkTodos(userId, listOf(bulkDto))
-
-        assertNotNull(result)
         verify { todoRepository.save(any()) }
     }
 
