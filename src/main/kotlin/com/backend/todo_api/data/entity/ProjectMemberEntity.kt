@@ -1,5 +1,6 @@
 package com.backend.todo_api.data.entity
 
+import com.backend.todo_api.model.RoleType
 import jakarta.persistence.Column
 import jakarta.persistence.Entity
 import jakarta.persistence.EnumType
@@ -27,6 +28,7 @@ class ProjectMemberEntity(
     @JoinColumn(name = "project_id", nullable = false)
     var project: ProjectEntity = ProjectEntity(),
 
-    @Column(name = "role", nullable = false)
-    var role: String = ""
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "role_id", nullable = false)
+    var role: RoleEntity = RoleEntity()
 )

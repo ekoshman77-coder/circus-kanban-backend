@@ -7,13 +7,3 @@ data class SinglePomodoroRequest(
     val count: Int = 1
 )
 
-// Für den Offline-Sync (Bulk) aus dem Zug
-data class OfflinePomodoroItem(
-    val todoId: String,
-    val timestamp: Long
-)
-
-data class BulkPomodoroRequest(
-    val userId: String,
-    val sessions: List<OfflinePomodoroItem>
-)
