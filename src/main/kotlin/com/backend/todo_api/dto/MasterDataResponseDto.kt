@@ -9,4 +9,5 @@ data class MasterDataResponseDto(
     val resources: List<String>,
     val actions: List<String>,
     val specializations: List<String>,
+    val patternTypes: List<String>
 )

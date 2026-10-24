@@ -56,21 +56,6 @@ class RolePermissionAdminService(
         )
     }
 
-    /** 1. Alle Stammdaten für das Admin-Board liefern */
-    @Transactional(readOnly = true)
-    fun getMasterData(): MasterDataResponseDto {
-        return MasterDataResponseDto(
-            departmentScopes = ScopeType.entries.filter { it.isDepartmentSelectable }.map { it.name },
-            allScopes = ScopeType.entries.map { it.name },
-            departmentRoles = RoleType.entries.filter { it.isDepartmentRole }.map { it.name },
-            projectRoles = RoleType.entries.filter { it.isProjectRole }.map { it.name },
-            otherRoles = RoleType.entries.filter { !it.isDepartmentRole && !it.isProjectRole }.map { it.name },
-            resources = ResourceType.entries.map { it.name },
-            actions = ActionType.entries.map { it.name },
-            specializations = DepartmentSpecializationType.entries.map { it.name }
-        )
-    }
-
     private fun verifyAdminPermission(userId: String, requiredAction: ActionType) {
         val userContexts = userContextResolver.resolveContexts(userId)
         val hasPermission = permissionService.hasPermission(

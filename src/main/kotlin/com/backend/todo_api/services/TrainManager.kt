@@ -13,8 +13,8 @@ import kotlin.math.roundToInt
 @Component
 class TrainManager(
     // 🌍 Unser universelles KI-Framework (Sammelt alle Beans automatisch)
-    private val globalDataProviders: List<AiGlobalDataProvider<*>>,
-    private val initialSeedProviders: List<AiInitialSeedProvider<*>>,
+    private val globalDataProviders: List<AiGlobalDataProvider<*, *>>,
+    private val initialSeedProviders: List<AiInitialSeedProvider<*, *>>,
 
     private val categoryPredictorService: CategoryPredictorService,
     private val focusPredictorService: FocusPredictorService // 🧠 JETZT ERREICHBAR!
@@ -47,16 +47,16 @@ class TrainManager(
     }
 
     /**
-     * GLOBALER KATEGORIE-PREDICTOR (Zustandslos über dein neues Framework)
+     * GLOBALER KATEGORIE-PREDICTOR (Generisch für To-Do, Notiz und komplexe Payloads)
      */
-    fun trainAndPredictGlobal(text: String, contextType: AiContextType): String {
+    fun <I> trainAndPredictGlobal(input: I, contextType: AiContextType, textExtractor: (I) -> String): String {
         val matchingProvider = globalDataProviders.find { it.getContextType() == contextType }
             ?: throw IllegalArgumentException("Kein KI-Provider für Typ '$contextType' registriert!")
 
         @Suppress("UNCHECKED_CAST")
-        val globalData = matchingProvider.getGlobalTrainingPairs() as List<Pair<String, String>>
+        val globalData = matchingProvider.getGlobalTrainingPairs() as List<Pair<I, String>>
 
-        return categoryPredictorService.predictStateless(text, globalData)
+        return categoryPredictorService.predictStateless(input, globalData, textExtractor)
     }
 
     /**
@@ -97,12 +97,16 @@ class TrainManager(
     /**
      * Holt alle global verfügbaren Kategorien des Kontextes für Vorschlagslisten im Frontend
      */
-    fun getGlobalCategories(contextType: AiContextType): List<String> {
+    /**
+     * Holt alle global verfügbaren Kategorien des Kontextes
+     */
+    fun<I> getGlobalCategories(contextType: AiContextType): List<String> {
         val matchingProvider = globalDataProviders.find { it.getContextType() == contextType }
             ?: throw IllegalArgumentException("Kein KI-Provider für Typ '$contextType' registriert!")
 
+        // Hier nutzen wir wildcard (*), da uns der Input-Typ beim reinen Auslesen der Kategorien egal ist
         @Suppress("UNCHECKED_CAST")
-        val pairs = matchingProvider.getGlobalTrainingPairs() as List<Pair<String, String>>
+        val pairs = matchingProvider.getGlobalTrainingPairs() as List<Pair<I, String>>
 
         return pairs
             .map { it.second }
@@ -121,7 +125,7 @@ class TrainManager(
     /**
      * Klebt die echten Daten mit den Seed-Daten (Lehrbuch) für einen Kontext zusammen.
      */
-    fun trainModelStateful(context: AiContextType, trainingBlock: (List<Pair<String, *>>) -> Unit) {
+    fun trainModelStateful(context: AiContextType, trainingBlock: (List<Pair<*, *>>) -> Unit) {
         val dataProvider = globalDataProviders.find { it.getContextType() == context }
         val seedProvider = initialSeedProviders.find { it.getContextType() == context }
 

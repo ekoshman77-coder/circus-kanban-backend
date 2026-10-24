@@ -5,4 +5,5 @@ import org.springframework.data.jpa.repository.JpaRepository
 
 interface SensitivePatternRepository: JpaRepository<SensitivePatternEntity, String> {
     fun findByPatternValueAndPatternType(patternValue: String, patternType: String): List<SensitivePatternEntity>
+    fun existsByPatternValueIgnoreCaseAndPatternTypeIgnoreCase(patternValue: String, patternType: String): Boolean
 }

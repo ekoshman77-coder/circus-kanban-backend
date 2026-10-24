@@ -12,21 +12,25 @@ class CategoryPredictorService {
      * @param text Der aktuell vom User eingetippte Text (Vorschau)
      * @param trainingData Die frisch geholten DB-Daten GENAU dieses Users (Pair(Kategorie, Text))
      */
-    fun predictStateless(text: String, trainingData: List<Pair<String, String>>): String {
-        val wordsToPredict = AiTextUtil.tokenizeAndClean(text)
+    fun <I> predictStateless(
+        input: I,
+        trainingData: List<Pair<I, String>>,
+        textExtractor: (I) -> String
+    ): String {
+        val textToPredict = textExtractor(input)
+        val wordsToPredict = AiTextUtil.tokenizeAndClean(textToPredict)
         if (wordsToPredict.isEmpty() || trainingData.isEmpty()) return "Allgemein"
 
-        // 📊 Wir bauen uns die Zählung NUR lokal im Stack für diesen einen Request auf!
         val localWordCounts = mutableMapOf<String, MutableMap<String, Int>>()
         val localCategoryCounts = mutableMapOf<String, Int>()
         val localVocabulary = mutableSetOf<String>()
 
-        // 🚂 Lokales Blitz-Training (lebt nur während dieser Funktion)
-        for ((trainText, category) in trainingData) {
+        for ((trainInput, category) in trainingData) {
             if (category.isBlank()) continue
 
             localCategoryCounts[category] = localCategoryCounts.getOrDefault(category, 0) + 1
 
+            val trainText = textExtractor(trainInput)
             val words = AiTextUtil.tokenizeAndClean(trainText)
             val categoryMap = localWordCounts.getOrPut(category) { mutableMapOf() }
             for (word in words) {
@@ -37,7 +41,6 @@ class CategoryPredictorService {
 
         if (localCategoryCounts.isEmpty()) return "Allgemein"
 
-        // 🔮 Ab hier läuft die exakte Naive-Bayes-Klassifikation auf den lokalen Daten
         val totalDocs = localCategoryCounts.values.sum().toDouble()
         var bestCategory = "Allgemein"
         var highestScore = -Double.MAX_VALUE
@@ -50,8 +53,6 @@ class CategoryPredictorService {
 
             for (word in wordsToPredict) {
                 val wordCountInCategory = categoryWords.getOrDefault(word, 0)
-
-                // 🛡️ Laplace-Glättung mit dem exklusiven Request-Vokabular
                 val wordProbability = (wordCountInCategory + 1).toDouble() /
                         (totalWordsInCategory + localVocabulary.size)
 
@@ -66,5 +67,4 @@ class CategoryPredictorService {
 
         return bestCategory
     }
-
 }

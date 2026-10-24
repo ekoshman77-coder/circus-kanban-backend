@@ -14,6 +14,7 @@ import com.backend.todo_api.exceptions.ActionForbiddenException
 import com.backend.todo_api.exceptions.UserDeletedException
 import com.backend.todo_api.model.ActionType
 import com.backend.todo_api.model.RewardUpdateResult
+import com.backend.todo_api.services.sanitization.SanitizationService
 import io.mockk.*
 import io.mockk.impl.annotations.InjectMockKs
 import io.mockk.impl.annotations.MockK

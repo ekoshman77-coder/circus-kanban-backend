@@ -13,7 +13,7 @@ import org.springframework.transaction.annotation.Transactional
 @Service
 class AiFocusSeedService(
     private val aiFocusSampleRepository: AiFocusSampleRepository
-) : AiInitialSeedProvider<FocusType> {
+) : AiInitialSeedProvider<String, FocusType> {
 
     override fun getContextType(): AiContextType = AiContextType.TODO_FOCUS
 

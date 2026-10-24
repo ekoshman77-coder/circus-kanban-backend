@@ -194,7 +194,7 @@ class NoteService(
 @Configuration
 class NoteAiProviderConfig(private val noteService: NoteService) {
     @Bean
-    fun noteCategoryProvider() = object : AiGlobalDataProvider<String> {
+    fun noteCategoryProvider() = object : AiGlobalDataProvider<String, String> {
         override fun getContextType() = AiContextType.NOTE_TAG
         override fun getGlobalTrainingPairs() = noteService.getGlobalTrainingPairs()
     }

@@ -5,5 +5,6 @@ enum class AiContextType {
     TODO_FOCUS,
     TODO_EFFORT,
     NOTE_TAG,
-    QUICK_TODO_CATEGORY
+    QUICK_TODO_CATEGORY,
+    SANITIZATION_REASON
 }

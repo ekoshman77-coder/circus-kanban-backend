@@ -8,13 +8,13 @@ interface Contextable {
 /**
 * Universeller Provider für ECHTE User-Daten aus der Datenbank
 */
-interface AiGlobalDataProvider<T>: Contextable {
-    fun getGlobalTrainingPairs(): List<Pair<String, T>>
+interface AiGlobalDataProvider<I, T>: Contextable {
+    fun getGlobalTrainingPairs(): List<Pair<I, T>>
 }
 
 /**
  * Universeller Provider für KÜNSTLICHE Start-Lehrbücher (Seeds)
  */
-interface AiInitialSeedProvider<T>: Contextable {
-    fun getInitialSeeds(): List<Pair<String, T>>
+interface AiInitialSeedProvider<I, T>: Contextable {
+    fun getInitialSeeds(): List<Pair<I, T>>
 }
