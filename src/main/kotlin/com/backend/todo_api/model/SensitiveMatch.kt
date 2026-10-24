@@ -9,3 +9,9 @@ data class SensitiveMatch(
     val weight: Double = 0.5,
     val isApproved: Boolean? = null
 )
+
+data class Word(
+    val text: String,
+    val startIndex: Int,
+    val isStopWord: Boolean
+)

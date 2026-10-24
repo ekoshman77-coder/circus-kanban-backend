@@ -11,7 +11,8 @@ enum class ErrorCode(val value: String) {
     TEAM_VALIDATION_ERROR("TEAM_VALIDATION_ERROR"),
     FORBIDDEN("ACTION_FORBIDDEN"),
     NOTE_NOT_FOUND("NOTE_NOT_FOUND"),
-    RESOURCE_ALREADY_EXISTS("RESOURE_ALREADY_EXIST")
+    RESOURCE_ALREADY_EXISTS("RESOURE_ALREADY_EXIST"),
+    INVALID_INPUT("INVALID_INPUT")
 }
 
 data class ErrorResponse(
@@ -36,3 +37,4 @@ class PermissionAlreadyExistsException(message: String) : RuntimeException(messa
 class PermissionNotFoundException(message: String) : RuntimeException(message)
 class NoteNotFoundException(message: String): RuntimeException(message)
 class ResourceAlreadyExistsException(message: String) : RuntimeException(message)
+class InvalidInputException(message: String) : RuntimeException(message)

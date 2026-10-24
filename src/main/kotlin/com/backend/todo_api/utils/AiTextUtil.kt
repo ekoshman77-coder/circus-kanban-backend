@@ -1,5 +1,7 @@
 package com.backend.todo_api.utils
 
+import com.backend.todo_api.model.WordToken
+
 object AiTextUtil {
 
     // 📋 Exakte Wörter, die ohne Wenn und Aber rausfliegen
@@ -7,8 +9,18 @@ object AiTextUtil {
         "ja", "damit", "sowohl", "um", "auch", "noch", "mehr",
         "und", "oder", "aber", "weil", "dass", "wenn",
         "der", "die", "das", "ein", "eine", "einen", "einem", "einer", "eines",
-        "in", "auf", "zu", "nach", "mit", "von", "im", "am", "für", "über", "unter", "vor", "aus", "bei"
+        "in", "auf", "zu", "nach", "mit", "von", "im", "am", "für", "über", "unter", "vor", "aus", "bei",
+        "ist", "fuer", "den", "dem", "des"
     )
+
+    // 🚀 Einmalig als performanter String für Regex-Pattern aufbereitet
+    val stopWordsRegexPattern: String by lazy {
+        val exactPart = exactStopWords.joinToString("|")
+        val stemPart = stopWordStems.joinToString("|") { "$it.{0,2}" }
+
+        // Beide Teile kombinieren
+        "$exactPart|$stemPart"
+    }
 
     // 🔬 Deine genialen Wortstämme mit der Längen-Toleranz-Regel
     private val stopWordStems = listOf(
@@ -32,16 +44,35 @@ object AiTextUtil {
         val allWords = cleanText.split(" ")
             .filter { it.isNotBlank() && it.length > 1 }
 
-        // 3. Jedes Wort durch deine KI-Stoppwort-Bremse jagen
+        // 3. Jedes Wort durch KI-Stoppwort-Bremse jagen
         return allWords.filter { word ->
             !isStopWord(word)
         }
     }
 
+    fun tokenizeWithIndices(text: String, isStopWordCheck: (String) -> Boolean): List<WordToken> {
+        if (text.isBlank()) return emptyList()
+
+        // Findet entweder Text in Anführungszeichen ODER normale Wörter/Zahlen
+        val tokenRegex = Regex("(\"[^\"]+\"|'[^']+'|(?i)[a-zäöüß0-9]+)")
+
+        return tokenRegex.findAll(text).map { match ->
+            val rawValue = match.value
+            val cleanValue = rawValue.removeSurrounding("\"").removeSurrounding("'")
+
+            WordToken(
+                text = cleanValue,
+                startIndex = match.range.first,
+                endIndex = match.range.last + 1,
+                isStopWord = isStopWordCheck(cleanValue.lowercase())
+            )
+        }.toList()
+    }
+
     /**
      * Die Herzstück-Logik: Entscheidet, ob ein Wort ausgefiltert wird
      */
-    private fun isStopWord(word: String): Boolean {
+    public fun isStopWord(word: String): Boolean {
         // Regel 1: Ist es ein exaktes Stoppwort?
         if (exactStopWords.contains(word)) return true
 

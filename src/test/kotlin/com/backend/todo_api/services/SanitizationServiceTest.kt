@@ -8,6 +8,7 @@ import com.backend.todo_api.dto.SanitizationFeedbackItemDto
 import com.backend.todo_api.dto.SensitiveMatchDto
 import com.backend.todo_api.model.PatternTypeEnum
 import com.backend.todo_api.model.SanitizationPattern
+import com.backend.todo_api.services.sanitization.SanitizationService
 import io.mockk.every
 import io.mockk.mockk
 import org.junit.jupiter.api.Assertions.assertEquals

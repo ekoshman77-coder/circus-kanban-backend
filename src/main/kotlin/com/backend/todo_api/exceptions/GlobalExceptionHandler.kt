@@ -25,7 +25,7 @@ class GlobalExceptionHandler {
             .body(ErrorResponse(ErrorCode.INVALID_DATA, ex.message))
 
     @ExceptionHandler(InvalidStatusRequestException::class)
-    fun handlenvalidStatusRequest(ex: TodoNotFoundException) =
+    fun handleInvalidStatusRequest(ex: TodoNotFoundException) =
         ResponseEntity.status(HttpStatus.BAD_REQUEST)
             .body(ErrorResponse(ErrorCode.WRONG_ENDPOINT, ex.message))
 
@@ -94,4 +94,8 @@ class GlobalExceptionHandler {
         ResponseEntity.status(HttpStatus.CONFLICT)
             .body(ErrorResponse(ErrorCode.RESOURCE_ALREADY_EXISTS, ex.message))
 
+    @ExceptionHandler(InvalidInputException::class)
+    fun handleInvalidInput(ex: InvalidInputException) =
+        ResponseEntity.status(HttpStatus.BAD_REQUEST)
+            .body(ErrorResponse(ErrorCode.INVALID_DATA, ex.message))
 }

@@ -24,6 +24,7 @@ import com.backend.todo_api.model.ScopeType
 import com.backend.todo_api.model.SensitiveMatch
 import com.backend.todo_api.model.TodoSecurityResource
 import com.backend.todo_api.providers.AiGlobalDataProvider
+import com.backend.todo_api.services.sanitization.SanitizationService
 import com.backend.todo_api.utils.AiTextUtil
 import org.springframework.stereotype.Service
 import com.backend.todo_api.validation.*
@@ -589,6 +590,26 @@ class TodoService (
         return authorizedTodos.map { mapToDto(it) }
     }
 
+    @Transactional
+    fun rescanAllTodosSensitivity() {
+        val activeTodos = todoRepository.findByIsArchivedFalse()
+
+        for (todo in activeTodos) {
+            if (todo.description.isNullOrBlank()) continue
+
+            val scanResult = sanitizationService.scanAndEvaluate(todo.description)
+
+            todo.isSensitive = scanResult.matches.isNotEmpty()
+            todo.sensitiveMatchesJson = if (scanResult.matches.isEmpty()) {
+                null
+            } else {
+                objectMapper.writeValueAsString(scanResult.matches)
+            }
+
+            todoRepository.save(todo)
+        }
+    }
+
     /**
      * 🧹 Admin-Aktion: Verarbeitet das Feedback des Admins, bereinigt die Beschreibung des To-Dos,
      * bewertet die Sensitivität neu und speichert das To-Do zentral in der Datenbank.
@@ -721,25 +742,25 @@ class TodoService (
 class TodoAiProviderConfig(private val todoService: TodoService) {
 
     @Bean
-    fun todoCategoryProvider() = object : AiGlobalDataProvider<String> {
+    fun todoCategoryProvider() = object : AiGlobalDataProvider<String, String> {
         override fun getContextType() = AiContextType.TODO_CATEGORY
         override fun getGlobalTrainingPairs() = todoService.getCategoryTrainingPairs()
     }
 
     @Bean
-    fun todoFocusProvider() = object : AiGlobalDataProvider<FocusType> {
+    fun todoFocusProvider() = object : AiGlobalDataProvider<String, FocusType> {
         override fun getContextType() = AiContextType.TODO_FOCUS
         override fun getGlobalTrainingPairs() = todoService.getFocusTrainingPairs()
     }
 
     @Bean
-    fun todoEffortProvider() = object : AiGlobalDataProvider<Int> {
+    fun todoEffortProvider() = object : AiGlobalDataProvider<String, Int> {
         override fun getContextType() = AiContextType.TODO_EFFORT
         override fun getGlobalTrainingPairs() = todoService.getEffortTrainingPairs()
     }
 
     @Bean
-    fun quickTodoProvider() = object : AiGlobalDataProvider<String> {
+    fun quickTodoProvider() = object : AiGlobalDataProvider<String, String> {
         override fun getContextType() = AiContextType.QUICK_TODO_CATEGORY
         // Hier ziehen wir nur die Aufgaben, die "schnell" waren (z.B. wenig effort)
         override fun getGlobalTrainingPairs() = todoService.getQuickTodoTrainingPairs()

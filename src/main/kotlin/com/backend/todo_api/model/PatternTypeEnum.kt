@@ -5,5 +5,4 @@ enum class PatternTypeEnum {
     EXACT,
     KEYWORD_VALUE_AFTER,
     KEYWORD_VALUE_BEFORE,
-    KEYWORD_VALUE_BETWEEN;
 }
