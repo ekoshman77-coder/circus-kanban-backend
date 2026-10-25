@@ -1,7 +1,9 @@
 package com.backend.todo_api.dto
 
+import com.backend.todo_api.model.EnergyLevel
+
 data class PlannerRecommendationRequest(
     val userId: String,             // 🛡️ Lebenswichtig, damit jeder nur SEINE Todos sieht!
-    val userEnergy: String,       // "low", "normal", "high"
-    val workingTimeLeft: Double   // z.B. 4.5
+    val userEnergy: EnergyLevel,       // "low", "normal", "high"
+    val workingTimeLeft: Long   // z.B. 4.5
 )

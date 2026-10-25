@@ -15,14 +15,14 @@ class NoteAiController(private val trainManager: TrainManager) {
      * KI-Kategorievorschlag exklusiv für Zettel / Ideen
      * POST /api/ai/notes/predict
      */
-    @PostMapping("/predict")
-    fun getNotePrediction(@RequestBody request: PredictionRequest): PredictionResponse {
-        val suggestion = trainManager.trainAndPredictGlobal(
-            text = request.text,
-            contextType = AiContextType.NOTE_TAG
-        )
-        return PredictionResponse(suggestedCategory = suggestion)
-    }
+//    @PostMapping("/predict")
+//    fun getNotePrediction(@RequestBody request: PredictionRequest): PredictionResponse {
+//        val suggestion = trainManager.trainAndPredictGlobal(
+//            text = request.text,
+//            contextType = AiContextType.NOTE_TAG
+//        )
+//        return PredictionResponse(suggestedCategory = suggestion)
+//    }
 
 //    /**
 //     * Alle aktuell genutzten Zettel-Tags/Kategorien abrufen

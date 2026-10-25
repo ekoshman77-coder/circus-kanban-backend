@@ -1,10 +1,13 @@
 package com.backend.todo_api.config
 
 import jakarta.servlet.FilterChain
+import jakarta.servlet.ServletContext
 import jakarta.servlet.http.HttpServletRequest
 import jakarta.servlet.http.HttpServletResponse
+import org.springframework.boot.web.servlet.ServletContextInitializer
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
+import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity
 import org.springframework.security.config.annotation.web.builders.HttpSecurity
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder
@@ -15,14 +18,29 @@ import org.springframework.security.web.csrf.CsrfToken
 import org.springframework.security.web.csrf.CsrfTokenRequestHandler // Das Interface
 import org.springframework.security.web.csrf.DefaultCsrfToken
 import org.springframework.security.web.header.writers.XXssProtectionHeaderWriter
+import org.springframework.session.config.SessionRepositoryCustomizer
+import org.springframework.session.jdbc.JdbcIndexedSessionRepository
+import org.springframework.session.jdbc.config.annotation.web.http.EnableJdbcHttpSession
 import org.springframework.web.cors.CorsConfiguration
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource
 import org.springframework.web.filter.OncePerRequestFilter
+import java.time.Duration
 import java.util.function.Supplier
 
 @Configuration
 @EnableWebSecurity
+@EnableMethodSecurity
+@EnableJdbcHttpSession(maxInactiveIntervalInSeconds = 604800)
 class SecurityConfig {
+    @Bean
+    fun servletContextInitializer(): ServletContextInitializer {
+        return ServletContextInitializer { servletContext: ServletContext ->
+            // Das hier zwingt den Tomcat, das Cookie mit einem festen Ablaufdatum zu schreiben
+            servletContext.sessionCookieConfig.maxAge = 604800 // 7 Tage
+            servletContext.sessionCookieConfig.isHttpOnly = true
+            servletContext.sessionCookieConfig.path = "/"
+        }
+    }
 
     @Bean
     fun passwordEncoder(): BCryptPasswordEncoder {
@@ -32,13 +50,28 @@ class SecurityConfig {
     @Bean
     fun securityFilterChain(http: HttpSecurity): SecurityFilterChain {
         http
+//            .securityContext { securityContext ->
+//                securityContext.securityContextRepository(
+//                    org.springframework.security.web.context.HttpSessionSecurityContextRepository()
+//                )
+//            }
+//
+//            .sessionManagement { session ->
+//                session.sessionCreationPolicy(org.springframework.security.config.http.SessionCreationPolicy.IF_REQUIRED)
+//            }
+
+            .sessionManagement { session ->
+                // Wir lassen Spring Boot das automatisch regeln, da Spring Session JDBC
+                // den Session-Mechanismus für uns "übernimmt".
+                session.sessionCreationPolicy(org.springframework.security.config.http.SessionCreationPolicy.IF_REQUIRED)
+            }
             // 1. CORS
             .cors { cors ->
                 val source = UrlBasedCorsConfigurationSource()
                 val config = CorsConfiguration()
                 config.allowedOrigins = listOf("http://localhost:4200")
-                config.allowedMethods = listOf("GET", "POST", "PUT", "DELETE", "OPTIONS")
-                config.allowedHeaders = listOf("Authorization", "Cache-Control", "Content-Type", "X-XSRF-TOKEN")
+                config.allowedMethods = listOf("GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS")
+                config.allowedHeaders = listOf("*")
                 config.exposedHeaders = listOf("X-XSRF-TOKEN")
                 config.allowCredentials = true
                 source.registerCorsConfiguration("/**", config)
@@ -88,26 +121,6 @@ class SecurityConfig {
 }
 
 /**
- * Custom CSRF handler that processes tokens in plaintext (without XOR encryption).
- * This perfectly matches the token format sent by modern frontend frameworks like Angular.
- */
-//private class PlaintextCsrfTokenRequestHandler : CsrfTokenRequestHandler {
-//    override fun handle(
-//        request: HttpServletRequest,
-//        response: HttpServletResponse,
-//        csrfToken: Supplier<CsrfToken>
-//    ) {
-//        // Wir holen das echte Token aus Spring Security
-//        val token = csrfToken.get()
-//
-//        // Wir legen es OHNE XOR-Verschlüsselung als reines Text-Attribut in den Request.
-//        // Spring Security nutzt diese Attribute später, um sie mit dem HTTP-Header zu vergleichen.
-//        request.setAttribute(CsrfToken::class.java.name, token)
-//        request.setAttribute(token.parameterName, token)
-//    }
-//}
-
-/**
  * 🎪 UNSER EXPERIMENTELLES CHIFFRE-LABOR ("Kinderverschlüsselung" Buchstabe + 1)
  */
 private class PlaintextCsrfTokenRequestHandler : CsrfTokenRequestHandler {
@@ -145,5 +158,13 @@ private class PlaintextCsrfTokenRequestHandler : CsrfTokenRequestHandler {
         return input.map { char ->
             if (char.isLetterOrDigit()) (char.code + 2).toChar() else char
         }.joinToString("")
+    }
+}
+
+
+@Bean
+fun sessionRepositoryCustomizer(): SessionRepositoryCustomizer<JdbcIndexedSessionRepository> {
+    return SessionRepositoryCustomizer { repository ->
+        repository.setDefaultMaxInactiveInterval(java.time.Duration.ofDays(7))
     }
 }

@@ -1,5 +1,7 @@
 package com.backend.todo_api.dto
 
+import com.backend.todo_api.model.SensitiveMatch
+
 open class CreateTodoDto(
     val task: String = "",
     val description: String? = null,
@@ -9,16 +11,18 @@ open class CreateTodoDto(
     val effort: Int = 0,
     val usedEffort: Int = 0,
     val createdAt: Long = 0,
-    val userId: String = "",
+    var userId: String = "",
     val category: String = "Allgemein",
     val milestoneId: String? = null,
     val assignedUserId: String? = null,
     val isStarted: Boolean = false,
     val teamStatus: String = "BACKLOG",
-    val lastDeveloperId: String? = null
+    val lastDeveloperId: String? = null,
+    val reviewerId: String? = null,
+    val reviewerUsedEffort: Double? = null
 )
 
-class TodoDto(
+open class TodoDto(
     val id: String = "",
 
     // 🎯 JETZT MIT STANDARDWERTEN:
@@ -37,7 +41,12 @@ class TodoDto(
     isStarted: Boolean = false,
     val effortChangesCount: Int? = 0,
     teamStatus: String = "BACKLOG",
-    lastDeveloperId: String? = null
+    lastDeveloperId: String? = null,
+    reviewerId: String? = null,
+    reviewerUsedEffort: Double? = null,
+    // 🎯 NEU: Sensitivitäts-Felder fürs Frontend
+    val isSensitive: Boolean = false,
+    val sensitiveMatches: List<SensitiveMatch>? = emptyList()
 ) : CreateTodoDto(
     task,
     description,
@@ -53,5 +62,7 @@ class TodoDto(
     assignedUserId,
     isStarted,
     teamStatus,
-    lastDeveloperId
+    lastDeveloperId,
+    reviewerId,
+    reviewerUsedEffort
 )

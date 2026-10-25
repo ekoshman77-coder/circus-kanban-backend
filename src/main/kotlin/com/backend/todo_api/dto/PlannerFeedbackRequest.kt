@@ -1,9 +1,13 @@
 package com.backend.todo_api.dto
 
+data class RejectedTodoFeedback(
+    val todoId: String,
+    val rejectReason: String? = null // z. B. "too_heavy", "too_long", "no_motivation"
+)
+
 data class PlannerFeedbackRequest(
     val userId: String,
-    val todoId: String,
-    val accepted: Boolean,
-    val rejectReason: String?, // "no_motivation", "too_heavy", "too_long" oder null
-    val currentEnergy: String  // "low", "medium", "high" -> Wichtig fürs biologische Lernen!
+    val roundId: String,
+    val acceptedTodoId: String? = null,
+    val rejectedTodos: List<RejectedTodoFeedback> = emptyList()
 )

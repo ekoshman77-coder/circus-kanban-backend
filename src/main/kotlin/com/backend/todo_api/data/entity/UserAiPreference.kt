@@ -1,22 +1,26 @@
 package com.backend.todo_api.data.entity
 
+import com.backend.todo_api.model.EnergyLevel
+import com.backend.todo_api.model.PreferenceType
 import jakarta.persistence.*
+import java.util.UUID
 
 @Entity
 @Table(name = "user_ai_preferences")
 class UserAiPreference(
     @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
-    val id: Long? = null,
+    var id: String = UUID.randomUUID().toString(),
 
     @Column(name = "user_id", nullable = false)
     val userId: String = "",
 
+    @Enumerated(EnumType.STRING)
     @Column(name = "user_energy", nullable = false)
-    val userEnergy: String = "", // "low", "medium", "high", "any"
+    val userEnergy: EnergyLevel = EnergyLevel.ANY,
 
+    @Enumerated(EnumType.STRING)
     @Column(name = "preference_type", nullable = false)
-    val preferenceType: String = "", // "EFFORT", "TIME", "MOTIVATION"
+    val preferenceType: PreferenceType = PreferenceType.MOTIVATION,
 
     @Column(name = "preference_value", nullable = false)
     val preferenceValue: String = "", // "aufwendig", "leicht", "lang", "Tag:Doku" etc.
