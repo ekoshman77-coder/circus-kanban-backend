@@ -1,81 +1,78 @@
-## ☕ Vorlage für das Backend-Repository (`README.md`)
+# SyncFocus & ProjectHub – Backend Engine ⚙️
+> Kotlin & Spring Boot Core Engine: Dynamische RBAC, JPA-Spezifikationen, Custom Security & Eigenentwickelte KI-Modelle
 
-```markdown
-# SyncFocus & ProjectHub – Backend ⚙️
-> Reaktives Fullstack-Ökosystem für agiles Projekt- und Selbstmanagement
-
-Dieses Repository enthält das **Backend** der Applikation, das als hochperformante, datengestützte Schnittstelle für das agile Projektmanagement, die Benutzerverwaltung und die KI-gestützte Smartplanung dient.
+Dieses Repository enthält das **Backend** der Applikation. Es ist in **Kotlin** und **Spring Boot** implementiert und bietet eine skalierbare, hochperformante REST-API mit dynamischer Rechteverwaltung, komplexer JPA-Filterung, maßgeschneiderten Sicherheitsmechanismen sowie vollständig eigenständig entwickelten Machine-Learning-Algorithmen.
 
 ---
 
-## 🏗️ Technologischer Stack (Backend)
-* **Sprache:** Kotlin
-* **Framework:** Spring Boot 4.x
-* **API-Architektur:** RESTful Web Services (mit JSON-Schnittstellen)
-* **Datenbank & ORM:** PostgreSQL & Spring Data JPA / Hibernate
-* **Sicherheit & Auth:** Spring Security, JWT (JSON Web Tokens) & feingranulare Role/Scope-Prüfung
-* **Machine Learning / KI:** Eigenimplementierte Algorithmen (Bayes-Klassifikator & kompaktes Neuronales Netz) in Kotlin
+## 🏗️ Technologischer Stack
+* **Sprache & Framework:** Kotlin, Java 21, Spring Boot 3.x
+* **Datenbank & ORM:** Spring Data JPA, Hibernate, PostgreSQL / H2
+* **Sicherheit & Auth:** Session-Management, Passwort-Verschlüsselung, Custom XSRF-Handler & Dynamic RBAC
+* **Architektur:** Layered Clean Architecture (Controller -> Service -> Repository / Specification)
+* **Machine Learning:** Custom Naive Bayes Engine & Custom Mini-Neural-Network (In-House Implementation)
 
 ---
 
-## 🧩 Backend-Highlights & Kern-Module
+## 📖 Backend-Architektur & Funktionsumfang
 
-1. **🤖 Duales KI-Empfehlungs-System:**
-   * **Naïve Bayes Klassifikator:** Statistisches Modell zur Analyse historischer Aufgabendaten und Prioritätsberechnung basierend auf Verfalleffekten und Wichtigkeiten.
-   * **Kompaktes Neuronales Netz (Custom NN):** Eigenes Forward-Neural-Network zur parallelen Mustererkennung von Nutzerpräferenzen und Aufwandsabschätzungen.
-   * **Vergleichs-API:** Stellt Ergebnisse beider Modelle bereit, sodass das Frontend dem Nutzer zwei transparente Vorschläge präsentieren kann.
+### 1. Eigenentwickelte KI-Engine (In-House AI Engine)
 
-2. **🔐 Admin-, Rechte- & Rollenverwaltung:**
-   * Abbildung eines mehrstufigen Hierarchie-Modells (Abteilungen, Projektrollen, Ressourcen & Scopes).
-   * Schnittstellen für den Benutzer-Approval-Prozess (Warteraum & Abteilungs-Zuweisung).
+Im Gegensatz zu klassischen Systemen, die externe KI-APIs nutzen, verwendet dieses Backend zwei vollständig selbst entwickelte, leichtgewichtige Machine-Learning-Modelle für intelligentes Aufgabensortieren und Datenvalidierung.
 
-3. **📊 Datenaggregations-Engine für Statistik:**
-   * Hochoptimierte DB-Abfragen zur Berechnung von Tagesauslastungen, Fokuszeiten (Pomodoro) und Retrospektiven-Analysen.
+#### 1.1. Naive Bayes Classifier (Wahrscheinlichkeitsmodell)
+* **Algorithmus:** Text- und Merkmal-Klassifikation basierend auf dem Bayes-Theorem mit Laplace-Glättung (Laplace Smoothing).
+* **Anwendungsbereiche:**
+    * **Kategorisierung:** Automatische Zuweisung von Kategorien für Aufgaben und Ideen.
+    * **Text-Anomalie-Erkennung (Sanitization):** Identifizierung von Testmüll, zufälligen Zeichenketten oder sensiblen Mustern in Beschreibungen.
+    * **Quick-Tasks & Meilensteine:** Generierung von Vorschlägen für Projekt-Milestones und Schnellaufgaben.
+    * **Prozedurale Gamification:** Dynamische Namensgenerierung für Benutzer-Level im Header.
+* **Admin-in-the-Loop Training:** Über spezielle Admin-Endpunkte können neue Trainingsmuster (z. B. `CREATE_PATTERN`) eingelernt werden, um das Modell im laufenden Betrieb kontinuierlich zu verbessern.
 
-4. **💾 Datenkonsistenz & PostgreSQL:**
-   * Robustes relationales Schema mit relationalen Mappings für Benutzer, Abteilungen, Berechtigungen, Aufgaben und Meilensteine.
+#### 1.2. Mini-Neural Network (Kompaktes Neuronales Netz)
+* **Eigenimplementierung:** Ein kompaktes Feedforward-Neuronales-Netzwerk in purem Kotlin (Eingabeschicht, Verborgene Schicht mit ReLU/Sigmoid-Aktivierung, Ausgabeschicht).
+* **Anwendungsbereich:** Analyse nicht-linearer Zusammenhänge zwischen Prioritäten, Auslastungen, Aufwandsschätzungen und Zeitfenstern im `Smart Planner`.
+* **Multi-Model Ensemble & Feedback Loop:**
+    * Bayes-Modell und Neuronales Netz generieren parallel unabhängige Empfehlungen.
+    * Benutzerentscheidungen (Accept/Decline) werden über Feedback-Endpunkte zurückgesendet und fließen direkt in den Trainings-Loop beider Modelle ein.
 
 ---
 
-## 🛠️ Installation & Start
+### 2. Custom Security, XSRF & Validierung
 
-### Voraussetzungen
-Da das Backend auf modernsten Framework-Generationen aufbaut, werden folgende Versionen zwingend benötigt:
-* **Java JDK:** v17 (über die Gradle-Toolchain definiert)
-* **Kotlin:** v2.2.21
-* **Spring Boot:** v4.0.6
-* **Datenbank:** Eine laufende PostgreSQL-Datenbank
+* **Eigenentwickelter XSRF-Handler:** Ein zu reinen Lern- und Verständniszwecken selbst geschriebener XSRF-Schutzmechanismus, der nach einem einfachen mathematischen Prinzip (z. B. der `a + 2`-Transformation) Tokens generiert und validiert.
+* **Input Validation (`inputValidation`):** Umfassende Validierungslogik für sämtliche eingehenden Payloads, um fehlerhafte Daten und Injections frühzeitig abzufangen.
+* **Passwort-Verschlüsselung:** Sichere kryptografische Hashing-Verfahren zum Schutz der Benutzerpasswörter in der Datenbank.
+* **Session-Management:** Kontrollierte Sitzungsverwaltung für den produktiven Live-Betrieb.
 
-### Schritte
-1. Repository klonen:
-   ```bash
-   git clone <https://github.com/ekoshman77-coder/circus-kanban-backend>
-   cd <todo-api>
-   
-2. Datenbank konfigurieren:
+---
 
-Passe die Zugangsdaten in der application.properties (oder application.yml) an:
+### 3. Dynamische Datenbank-RBAC (Dynamic Security & Permissions)
 
-    spring.datasource.url=jdbc:postgresql://localhost:5432/syncfocus_db
-    spring.datasource.username=postgres
-    spring.datasource.password=dein_passwort
+Die Rechteverwaltung basiert nicht auf statischen Hardcoded-Rollen, sondern auf einer dynamischen Datenstruktur in der Datenbank:
+* **Persistente Rechte-Matrix:** Rollen, Ressourcen, Scopes und spezifische Permissions sind vollständig in der Datenbank hinterlegt.
+* **Admin-Verwaltung:** Über die Administrationsoberfläche können Rechte zur Laufzeit ohne Server-Neustart angepasst werden.
+* **Granulare Absicherung:** Interceptoren und Guards prüfen eintreffende Anfragen gegen die dynamische Rechte-Matrix.
+* **Sandbox & 403 Escalation:** Versucht ein Benutzer im *Labor Mode* oder ohne ausreichende Rechte administrative Aktionen auszuführen, antwortet der Server strikt mit `HTTP 403 Forbidden`. Diese fehlerhaften Anfragen werden auf Client-Seite als Drafts gesichert und können an Administratoren zur Genehmigung freigegeben werden.
 
-3. Anwendung bauen und starten:
+---
 
-    ./gradlew bootRun
-    
-🧪 Testing & Build
+### 4. Dynamische Abfragen mit Spring Data JPA Specifications
 
-    Unit- & Integrationstests ausführen:
-    
-        ./gradlew test
-        
-    Production JAR erstellen:
-    
-        ./gradlew build
-    
-    
-👥 Team & Projektbeteiligte
+Für komplexe Such-, Sortier- und Filteroperationen (insbesondere im `Admin Todo Board`) nutzt das Backend das **Specification Pattern**:
+* **AdminTodoSpecification:** Dynamischer Aufbau von SQL/JPQL-Prädikaten basierend auf optionalen Parametern (`departmentId`, `projectId`, `targetUserId`, `isArchived`, Datumsbereiche).
+* **Direct Fetch Endpunkte:** Endpunkte wie `GET /api/admin/todos/filter` liefern hochoptimierte, gefilterte Datenmengen direkt aus der Datenbank für Admin-Konsolen, ohne den clientseitigen Queue-Puffer zu belasten.
 
-    Elena Koshman – Lead Developer & Software-Architektin
-    Gemini (Google) – Co-Developer (Architektur, KI-Logik & Code-Entwicklung)
+---
+
+### 5. Robustes Error-Handling & Validierung
+
+* **Duplikatschutz (HTTP 409):** Bei Versuchen, bereits existierende Datensätze oder Muster erneut anzulernen, wirft das Backend eine `ResourceAlreadyExistsException`, die sauber in ein `HTTP 409 Conflict` übersetzt wird.
+* **Transaktionale Sicherheit:** Alle schreibenden Operationen laufen in transaktionalen Kontexten (`@Transactional`), um Datenkonsistenz bei Batch-Queue-Verarbeitungen zu garantieren.
+
+---
+
+## 👥 Team & Projektbeteiligte
+
+* **Elena Koshman** – Lead Developer & Software-Architektin
+* **Gemini (Google)** – AI Collaborator & Co-Developer (Backend-Architektur, Algorithmen-Design & Code-Entwicklung)
