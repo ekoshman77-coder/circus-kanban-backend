@@ -150,8 +150,6 @@ class BayesPlannerService(
     // =============================================================================
     // 🛠️ PRIVATE HILFSMETHODEN FÜR DAS REFACTORING
     // =============================================================================
-
-
     private fun applyAiFocusFiltering(pool: List<TodoEntity>, userEnergy: EnergyLevel): List<TodoEntity> {
         var filteredPool = pool
         if (userEnergy == EnergyLevel.LOW) {

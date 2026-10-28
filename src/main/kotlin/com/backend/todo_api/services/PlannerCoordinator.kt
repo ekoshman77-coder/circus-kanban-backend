@@ -303,5 +303,85 @@ class PlannerCoordinator(
 
         return todoRepository.save(todo)
     }
-}
 
+    @Transactional
+    fun getMorningRecommendations(userId: String): PlannerRecommendationsResponse {
+        validateUserExists(userId, userRepository)
+
+        // 1. Historische oder vorhandene Pause-Todos (effort == 0) aus der DB holen
+        // Wir suchen nach Todos mit effort == 0 (auch aus der Historie/Archiv, oder aktiv)
+        val allTodos = todoRepository.findAll() // Alternativ eine spezifische Query für effort == 0
+        val pauseCandidates = allTodos.filter { it.effort == 0 && (it.userId == userId || it.userId.isBlank()) }
+
+        // 2. Fallback: Falls der User noch gar keine Pause-Todos in der Historie hat, generieren wir temporäre Standard-Pausen
+        val candidatePool = if (pauseCandidates.isNotEmpty()) {
+            pauseCandidates
+        } else {
+            listOf(
+                TodoEntity(id = "morning_coffee", task = "Kaffee oder Tee kochen", effort = 0, userId = userId),
+                TodoEntity(id = "morning_mail", task = "Posteingang kurz überfliegen", effort = 0, userId = userId),
+                TodoEntity(id = "morning_fresh", task = "Kurz lüften und strecken", effort = 0, userId = userId)
+            )
+        }
+
+        // 3. Beide Planner (NEURAL + BAYES) im Morgen-Modus mit den Pause-Kandidaten füttern!
+        val plannerRecommendations = planners.mapNotNull { planner ->
+            planner.calculatePerfectRecommendation(
+                userId = userId,
+                candidates = candidatePool,
+                userEnergy = EnergyLevel.LOW, // Verschlafener Start-Zustand[cite: 5, 7]
+                workingTimeLeft = 480L       // Voller Arbeitstag (8 Std)[cite: 5, 7]
+            )
+        }
+
+        if (plannerRecommendations.isEmpty()) {
+            return PlannerRecommendationsResponse(roundId = "", recommendations = emptyList())
+        }
+
+        // 4. Neue RecommendationRound in der DB speichern[cite: 5]
+        val round = RecommendationRoundEntity(
+            userId = userId,
+            createdAt = System.currentTimeMillis()
+        )
+
+        plannerRecommendations.forEach { recommendation ->
+            round.recommendations += PlannerRecommendationEntity(
+                round = round,
+                plannerType = recommendation.plannerType,
+                todoId = recommendation.todoId,
+                score = recommendation.score,
+                energyLevel = recommendation.energyLevel,
+                timeUntilDue = recommendation.timeUntilDue,
+                workingTimeLeft = recommendation.workingTimeLeft,
+                effort = recommendation.effort,
+                reason = "MORNING_PAUSE_" + recommendation.reason
+            )
+        }
+
+        val savedRound = recommendationRoundRepository.save(round)
+
+        // 5. Response zusammenbauen & zurückgeben[cite: 5]
+        val groupedRecommendations = plannerRecommendations.groupBy { it.todoId }
+        val recommendations = groupedRecommendations.map { (todoId, plannerRecs) ->
+            // Da temporäre Fallbacks keine echte DB-ID haben müssen, mappen wir sie sicher
+            val todo = candidatePool.firstOrNull { it.id == todoId }
+            val details = plannerRecs.map { rec ->
+                PlannerRecommendationDetail(
+                    plannerType = rec.plannerType,
+                    score = rec.score,
+                    reasonCode = rec.reason
+                )
+            }
+            RecommendedTodoResponse(
+                todo = todo?.let { todoService.mapToDto(it) },
+                plannerDetails = details,
+                modeCode = "MORNING_MODE"
+            )
+        }
+
+        return PlannerRecommendationsResponse(
+            roundId = savedRound.id,
+            recommendations = recommendations
+        )
+    }
+}
