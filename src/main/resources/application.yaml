@@ -29,3 +29,6 @@ bucket4j:
             - capacity: 10
               time: 1
               unit: minutes
+
+neural:
+  topology.file: "neural-topology-parallel.json"
