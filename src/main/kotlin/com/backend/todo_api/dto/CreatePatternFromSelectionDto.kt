@@ -1,6 +1,6 @@
 package com.backend.todo_api.dto
 
-import com.backend.todo_api.model.PatternTypeEnum
+import com.backend.todo_api.model.enums.PatternTypeEnum
 
 data class CreatePatternFromSelectionDto(
     val selectedText: String,

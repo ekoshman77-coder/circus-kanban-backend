@@ -3,7 +3,7 @@ package com.backend.todo_api.controller
 import com.backend.todo_api.dto.CreateNoteDto
 import com.backend.todo_api.dto.NoteDto
 import com.backend.todo_api.dto.NoteStatusChangeRequest
-import com.backend.todo_api.model.ActionType
+import com.backend.todo_api.model.enums.ActionType
 import com.backend.todo_api.services.NoteService
 import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity

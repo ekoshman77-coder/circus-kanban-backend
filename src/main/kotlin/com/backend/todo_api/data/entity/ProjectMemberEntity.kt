@@ -1,10 +1,6 @@
 package com.backend.todo_api.data.entity
 
-import com.backend.todo_api.model.RoleType
-import jakarta.persistence.Column
 import jakarta.persistence.Entity
-import jakarta.persistence.EnumType
-import jakarta.persistence.Enumerated
 import jakarta.persistence.FetchType
 import jakarta.persistence.GeneratedValue
 import jakarta.persistence.GenerationType

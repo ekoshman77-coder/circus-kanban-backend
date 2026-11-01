@@ -18,12 +18,11 @@ class NeuralNetwork(
 ) {
     private lateinit var rootNeuron: Neuron
     private val allEntitiesMap = mutableMapOf<String, NeuronEntity>()
-    private val leafIndicesMap = mutableMapOf<String, List<Int>>() // Speichert die Indizes pro Blatt
     private val createdNeuronsMap = mutableMapOf<String, Neuron>()
     private val objectMapper = ObjectMapper()
 
     val learningRate: Double = 0.2
-     var steps = 0
+    var steps = 0
 
     @PostConstruct
     fun initNetwork() {
@@ -32,7 +31,7 @@ class NeuralNetwork(
 
         val existingEntities = neuronRepository.findAll().associateBy { it.id }.toMutableMap()
 
-        // 🔍 TOPOLOGIE-VALIDIERUNG: Fehlt eine Entity ODER passt die Gewichtsanzahl nicht?
+        // 🔍 TOPOLOGIE-VALIDIERUNG
         val hasMismatch = topology.nodes.any { config ->
             val expectedWeightCount = if (config.type == NodeType.LEAF) config.inputCount else config.children.size
             val entity = existingEntities[config.id]
@@ -50,26 +49,25 @@ class NeuralNetwork(
             isFreshStart = true
         }
 
-        // 1. Entities laden und Indizes für Blätter merken
+        // 1. Entities laden
         topology.nodes.forEach { config ->
             val weightCount = if (config.type == NodeType.LEAF) config.inputCount else config.children.size
 
             val entity = existingEntities[config.id] ?: NeuronEntity(
                 id = config.id,
                 bias = Random.nextDouble(-1.0, 1.0),
-                weights = MutableList(weightCount) { Random.nextDouble(-1.5, 1.5) }
+                weights = MutableList(weightCount) { Random.nextDouble(-0.2, 0.2) }
             )
             allEntitiesMap[config.id] = entity
-
-            if (config.type == NodeType.LEAF) {
-                leafIndicesMap[config.id] = config.inputIndices
-            }
         }
 
-        // 2. Blätter erzeugen
+        // 2. Blätter erzeugen (mit Übergabe ihrer spezifischen inputIndices)
         topology.nodes.filter { config -> config.type == NodeType.LEAF }.forEach { config ->
             val entity = allEntitiesMap[config.id]!!
-            createdNeuronsMap[config.id] = Neuron(entity = entity)
+            createdNeuronsMap[config.id] = Neuron(
+                entity = entity,
+                inputIndices = config.inputIndices,
+            )
         }
 
         // 3. Äste und Wurzel erzeugen
@@ -79,7 +77,11 @@ class NeuralNetwork(
                 createdNeuronsMap[childId]
                     ?: throw IllegalStateException("Child-Neuron '$childId' nicht gefunden!")
             }
-            createdNeuronsMap[config.id] = Neuron(entity = entity, inputNeurons = childNeurons)
+
+            createdNeuronsMap[config.id] = Neuron(
+                entity = entity,
+                inputNeurons = childNeurons
+            )
         }
 
         val rootConfig = topology.nodes.firstOrNull { config -> config.type == NodeType.ROOT }
@@ -87,7 +89,7 @@ class NeuralNetwork(
 
         rootNeuron = createdNeuronsMap[rootConfig.id]!!
 
-        // 🎓 SCHULUNG / INITIAL-TRAINING BEI NEUSTART BZW. TOPOLOGIE-WECHSEL
+        // 🎓 SCHULUNG / INITIAL-TRAINING
         if (isFreshStart) {
             println("🎓 Starte automatisches Grund-Training für das neue Netz...")
             runBaselineTraining()
@@ -98,42 +100,45 @@ class NeuralNetwork(
     }
 
     /**
-     * Führt ein automatisches Grund-Training aus, um dem Netz nach einem Topologie-Wechsel
-     * eine erste solide Basis/Tendenz mitzugeben.
+     * Führt das automatische Grund-Training aus (10 gute + 10 schlechte Beispiele pro Epoche).
      */
     private fun runBaselineTraining() {
         resetTrainingSteps()
+        allEntitiesMap.forEach { (id, entity) ->
+            println("🔍 [DB-CHECK] Neuron $id Gewichte: ${entity.weights} | Bias: ${entity.bias}")
+        }
         val inputSize = getRequiredInputSize()
 
         repeat(1000) {
-            val batch = listOf(
-                DoubleArray(inputSize) { Random.nextDouble(0.7, 1.0) } to 0.9,
-                DoubleArray(inputSize) { Random.nextDouble(0.0, 0.3) } to 0.1
-            )
+            val batch = mutableListOf<Pair<DoubleArray, Double>>()
+
+            // 10x Gute Beispiele (alle Werte hoch) -> Target 0.9
+            repeat(10) {
+                batch.add(DoubleArray(inputSize) { Random.nextDouble(0.7, 1.0) } to 0.9)
+            }
+
+            // 10x Schlechte Beispiele (alle Werte tief) -> Target 0.1
+            repeat(10) {
+                batch.add(DoubleArray(inputSize) { Random.nextDouble(0.0, 0.3) } to 0.1)
+            }
+
+            // Trainieren im Arbeitsspeicher
             for ((sample, target) in batch) {
                 train(sample, target)
             }
         }
+
+        // 💾 Einmalig in der DB persistieren
+        neuronRepository.saveAll(allEntitiesMap.values)
+        println("✅ Ursprüngliches, scharfes Baseline-Training abgeschlossen!")
     }
 
     /**
-     * Führt den Forward-Pass aus, indem es die globalen Inputs für die Blätter passend zuschneidet.
+     * Führt den Forward-Pass aus. Das Netz übergibt das rohe Array direkt an die Wurzel,
+     * und die Neuronen holen sich autonom ihre benötigten Inputs.
      */
     fun predict(inputs: DoubleArray): Double {
-        // Wir können die Blätter vorab mit ihren spezifischen Slices versorgen oder beim Forward übergeben.
-        // Am einfachsten: Wir leiten die zugeschnittenen Arrays beim Aufruf durch.
-        return forwardRecursive(rootNeuron, inputs)
-    }
-
-    private fun forwardRecursive(neuron: Neuron, rawInputs: DoubleArray): Double {
-        // Wenn das Neuron ein Blatt ist (keine inputNeurons hat), schneiden wir das Array anhand der JSON-Indizes zu!
-        val actualInputs = if (neuron.inputNeurons.isEmpty()) {
-            val indices = leafIndicesMap[neuron.id] ?: rawInputs.indices.toList()
-            DoubleArray(indices.size) { i -> rawInputs[indices[i]] }
-        } else {
-            rawInputs
-        }
-        return neuron.forward(actualInputs)
+        return rootNeuron.forward(inputs)
     }
 
     fun train(inputs: DoubleArray, target: Double) {
@@ -143,16 +148,12 @@ class NeuralNetwork(
         val rootDelta = outputError * rootNeuron.getActivationDerivative()
 
         backpropagateRecursive(rootNeuron, inputs, rootDelta, learningRate)
-
-        neuronRepository.saveAll(allEntitiesMap.values)
     }
 
     private fun backpropagateRecursive(neuron: Neuron, rawInputs: DoubleArray, delta: Double, learningRate: Double) {
         if (neuron.inputNeurons.isEmpty()) {
-            // 🍃 BLATT: Hier schneiden wir die Inputs exakt wie beim Forward-Pass zu!
-            val indices = leafIndicesMap[neuron.id] ?: rawInputs.indices.toList()
-            val actualInputs = DoubleArray(indices.size) { i -> rawInputs[indices[i]] }
-            neuron.backpropagate(actualInputs, delta, learningRate)
+            // 🍃 BLATT: Delegiert die Rückwärtspropagation an das Neuron selbst
+            neuron.backpropagate(rawInputs, delta, learningRate)
         } else {
             // 🌳 AST / WURZEL: Rekursion durch die Kinder
             for (i in neuron.inputNeurons.indices) {
@@ -161,19 +162,24 @@ class NeuralNetwork(
                 backpropagateRecursive(child, rawInputs, childDelta, learningRate)
                 neuron.entity.weights[i] += learningRate * delta * child.lastOutput
             }
-            neuron.entity.bias += learningRate * delta * (0.005) // biasDivider
+            neuron.entity.bias += learningRate * delta * 0.005 // biasDivider
         }
     }
 
     fun resetTrainingSteps() {
         steps = 0
     }
+
     /**
-     * Ermittelt dynamisch aus der Topologie, wie viele Roh-Inputs (Array-Größe)
-     * das Netz mindestens benötigt (höchster Index + 1).
+     * Ermittelt dynamisch aus allen registrierten Neuronen bzw. der Topologie,
+     * wie viele Roh-Inputs (Array-Größe) das Netz mindestens benötigt.
      */
     fun getRequiredInputSize(): Int {
-        val maxIndex = leafIndicesMap.values.flatten().maxOrNull() ?: 0
+        // Da die Neuronen jetzt ihre inputIndices kennen, können wir das Maximum direkt ermitteln
+        // oder alternativ aus den geladenen Neuronen ableiten.
+        // Ein robuster Weg über alle Blatt-Neuronen in der createdNeuronsMap:
+        val allIndices = createdNeuronsMap.values.flatMap { it.inputIndices }
+        val maxIndex = if (allIndices.isNotEmpty()) allIndices.maxOrNull() ?: 0 else 3
         return maxIndex + 1
     }
 }

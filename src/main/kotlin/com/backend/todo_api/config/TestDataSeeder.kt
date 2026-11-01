@@ -3,7 +3,7 @@
 //import com.backend.todo_api.constants.AppConstants
 //import com.backend.todo_api.data.entity.*
 //import com.backend.todo_api.data.repository.*
-//import com.backend.todo_api.model.ScopeType
+//import com.backend.todo_api.model.enums.ScopeType
 //import org.springframework.boot.ApplicationArguments
 //import org.springframework.boot.ApplicationRunner
 //import org.springframework.core.annotation.Order

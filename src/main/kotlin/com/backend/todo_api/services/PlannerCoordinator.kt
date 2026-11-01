@@ -15,6 +15,7 @@ import com.backend.todo_api.dto.RecommendedTodoResponse
 import com.backend.todo_api.model.EnergyLevel
 import com.backend.todo_api.model.FeedbackForPlanner
 import com.backend.todo_api.model.PlannerType
+import com.backend.todo_api.model.enums.TodoGroupChoice
 import com.backend.todo_api.validation.validateUserExists
 import jakarta.transaction.Transactional
 import org.springframework.stereotype.Service
@@ -384,4 +385,108 @@ class PlannerCoordinator(
             recommendations = recommendations
         )
     }
+
+    @Transactional
+    fun getRecommendationsByGroup(
+        userId: String,
+        desiredGroup: TodoGroupChoice
+    ): PlannerRecommendationsResponse {
+        validateUserExists(userId, userRepository)
+
+        val matchPool = todoRepository.findActivePlannerTodosForUser(userId)
+        val nonSnoozedPool = filterAvailableTodos(matchPool)
+
+        if (nonSnoozedPool.isEmpty()) {
+            return PlannerRecommendationsResponse(roundId = "", recommendations = emptyList())
+        }
+
+        // 🎯 Filtern des Kandidatenpools exakt nach Wunsch des Users:
+        val candidatePool = when (desiredGroup) {
+            TodoGroupChoice.BREAK -> {
+                // Suchen nach effort == 0 oder Fallback-Pausen-Todos
+                val pauses = nonSnoozedPool.filter { it.effort == 0 }
+                if (pauses.isNotEmpty()) pauses else listOf(
+                    TodoEntity(id = "pause_coffee", task = "Kaffee kochen & durchatmen", effort = 0, userId = userId),
+                    TodoEntity(id = "pause_fresh", task = "Fenster öffnen & kurz strecken", effort = 0, userId = userId)
+                )
+            }
+            TodoGroupChoice.LIGHT -> {
+                // Kleine Aufgaben (effort == 1)
+                val lightTasks = nonSnoozedPool.filter { it.effort == 1 }
+                if (lightTasks.isNotEmpty()) lightTasks else nonSnoozedPool.filter { it.effort <= 2 }
+            }
+            TodoGroupChoice.HEAVY -> {
+                // Die großen Brocken (hoher Effort)
+                val heavyTasks = nonSnoozedPool.filter { it.effort >= 3 }
+                if (heavyTasks.isNotEmpty()) heavyTasks else nonSnoozedPool
+            }
+        }
+
+        // Energie-Level entsprechend der Gruppe anpassen für den Planner
+        val targetEnergy = when (desiredGroup) {
+            TodoGroupChoice.BREAK -> EnergyLevel.LOW
+            TodoGroupChoice.LIGHT -> EnergyLevel.MEDIUM
+            TodoGroupChoice.HEAVY -> EnergyLevel.HIGH
+        }
+
+        // Planner (Neural + Bayes) auf diesen spezifischen Pool loslassen
+        val plannerRecommendations = planners.mapNotNull { planner ->
+            planner.calculatePerfectRecommendation(
+                userId,
+                candidates = candidatePool,
+                userEnergy = targetEnergy,
+                workingTimeLeft = 240L
+            )
+        }
+
+        if (plannerRecommendations.isEmpty()) {
+            return PlannerRecommendationsResponse(roundId = "", recommendations = emptyList())
+        }
+
+        // Recommendation-Round speichern
+        val round = RecommendationRoundEntity(
+            userId = userId,
+            createdAt = System.currentTimeMillis()
+        )
+
+        plannerRecommendations.forEach { recommendation ->
+            round.recommendations += PlannerRecommendationEntity(
+                round = round,
+                plannerType = recommendation.plannerType,
+                todoId = recommendation.todoId,
+                score = recommendation.score,
+                energyLevel = recommendation.energyLevel,
+                timeUntilDue = recommendation.timeUntilDue,
+                workingTimeLeft = recommendation.workingTimeLeft,
+                effort = recommendation.effort,
+                reason = "GROUP_${desiredGroup}_" + recommendation.reason
+            )
+        }
+
+        val savedRound = recommendationRoundRepository.save(round)
+
+        // Response fürs Frontend bauen
+        val groupedRecommendations = plannerRecommendations.groupBy { it.todoId }
+        val recommendations = groupedRecommendations.map { (todoId, plannerRecs) ->
+            val todo = candidatePool.firstOrNull { it.id == todoId }
+            val details = plannerRecs.map { rec ->
+                PlannerRecommendationDetail(
+                    plannerType = rec.plannerType,
+                    score = rec.score,
+                    reasonCode = rec.reason
+                )
+            }
+            RecommendedTodoResponse(
+                todo = todo?.let { todoService.mapToDto(it) },
+                plannerDetails = details,
+                modeCode = "GROUP_CHOICE_$desiredGroup"
+            )
+        }
+
+        return PlannerRecommendationsResponse(
+            roundId = savedRound.id,
+            recommendations = recommendations
+        )
+    }
+
 }

@@ -1,6 +1,6 @@
 package com.backend.todo_api.dto
 
-import com.backend.todo_api.model.ScopeType
+import com.backend.todo_api.model.enums.ScopeType
 
 data class CreateProjectDto(
     val userId: String = "",

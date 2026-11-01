@@ -6,7 +6,8 @@ import kotlin.random.Random
 
 class Neuron(
     val entity: NeuronEntity,
-    val inputNeurons: List<Neuron> = emptyList()
+    val inputNeurons: List<Neuron> = emptyList(),
+    val inputIndices: List<Int> = emptyList()
 ) {
     // Nimmt automatisch die feste ID aus der Entity (z. B. "ROOT", "LEAF_1", "BRANCH_1")
     val id: String get() = entity.id
@@ -41,12 +42,19 @@ class Neuron(
         var sum = 0.0
 
         if (inputNeurons.isEmpty()) {
-            while (entity.weights.size < rawInputs.size) {
+            val actualInputs = if (inputIndices.isNotEmpty()) {
+                DoubleArray(inputIndices.size) { i -> rawInputs[inputIndices[i]] }
+            } else {
+                rawInputs
+            }
+
+            while (entity.weights.size < actualInputs.size) {
                 entity.weights.add(Random.nextDouble(-0.7, 0.7))
             }
-            for (i in rawInputs.indices) {
+
+            for (i in actualInputs.indices) {
                 val weight = if (i < entity.weights.size) entity.weights[i] else 0.0
-                sum += rawInputs[i] * weight
+                sum += actualInputs[i] * weight
             }
         } else {
             for (i in inputNeurons.indices) {
@@ -55,13 +63,13 @@ class Neuron(
         }
 
         sum += entity.bias
-        lastSum = sum // Summe vor der Aktivierung speichern!
+        lastSum = sum
 
-        // 🔀 ARCHITEKTUR-SPLIT: Nur die Wurzel nutzt Sigmoid, alles andere Leaky ReLU!
+        // 🎯 HIER greifen die Aktivierungsfunktionen für den lastOutput:
         lastOutput = if (isRoot) {
-            sigmoid(sum)
+            sigmoid(sum)   // Wurzel nutzt Sigmoid (für Werte zwischen 0 und 1)
         } else {
-            leakyRelu(sum)
+            leakyRelu(sum) // Äste/Blätter nutzen Leaky ReLU
         }
 
         return lastOutput
@@ -70,12 +78,17 @@ class Neuron(
     fun backpropagate(rawInputs: DoubleArray, delta: Double, learningRate: Double) {
         if (inputNeurons.isEmpty()) {
             val leafDelta = delta * getActivationDerivative()
-            while (entity.weights.size < rawInputs.size) {
-                entity.weights.add(Random.nextDouble(-0.7, 0.7))
+
+            // Auch hier: Nur die eigenen Inputs für das Gradienten-Update nutzen
+            val actualInputs = if (inputIndices.isNotEmpty()) {
+                DoubleArray(inputIndices.size) { i -> rawInputs[inputIndices[i]] }
+            } else {
+                rawInputs
             }
-            for (i in rawInputs.indices) {
+
+            for (i in actualInputs.indices) {
                 if (i < entity.weights.size) {
-                    entity.weights[i] += learningRate * leafDelta * rawInputs[i]
+                    entity.weights[i] += learningRate * leafDelta * actualInputs[i]
                 }
             }
             entity.bias += learningRate * leafDelta * biasDivider

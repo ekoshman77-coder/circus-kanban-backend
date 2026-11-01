@@ -1,6 +1,6 @@
 package com.backend.todo_api.data.entity
 
-import com.backend.todo_api.model.RoleType
+import com.backend.todo_api.model.enums.RoleType
 import jakarta.persistence.Column
 import jakarta.persistence.Entity
 import jakarta.persistence.EnumType

@@ -3,7 +3,6 @@ package com.backend.todo_api.controller
 import com.backend.todo_api.dto.CreateDepartmentDto
 import com.backend.todo_api.dto.DepartmentDto
 import com.backend.todo_api.exceptions.ActionForbiddenException
-import com.backend.todo_api.model.ScopeType
 import com.backend.todo_api.services.DepartmentService
 import io.mockk.every
 import io.mockk.just

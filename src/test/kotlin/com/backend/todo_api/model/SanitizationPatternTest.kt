@@ -1,5 +1,6 @@
 package com.backend.todo_api.model
 
+import com.backend.todo_api.model.enums.PatternTypeEnum
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Test
 

@@ -1,6 +1,6 @@
 package com.backend.todo_api.data.entity
 
-import com.backend.todo_api.model.ScopeType
+import com.backend.todo_api.model.enums.ScopeType
 import jakarta.persistence.*
 import java.util.UUID
 

@@ -31,4 +31,4 @@ bucket4j:
               unit: minutes
 
 neural:
-  topology.file: "neural-topology-parallel.json"
+  topology.file: "neural-topology.json"

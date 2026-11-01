@@ -6,7 +6,7 @@ import com.backend.todo_api.dto.ProjectMemberDto
 import com.backend.todo_api.dto.UserResponseDto
 import com.backend.todo_api.exceptions.GlobalExceptionHandler
 import com.backend.todo_api.exceptions.TeamValidationException
-import com.backend.todo_api.model.RoleType
+import com.backend.todo_api.model.enums.RoleType
 import com.backend.todo_api.services.ProjectTeamService
 import com.fasterxml.jackson.databind.ObjectMapper
 import io.mockk.every

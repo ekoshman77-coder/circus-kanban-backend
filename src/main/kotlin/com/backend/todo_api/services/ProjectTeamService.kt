@@ -13,12 +13,12 @@ import com.backend.todo_api.dto.ProjectMemberDto
 import com.backend.todo_api.exceptions.ActionForbiddenException
 import com.backend.todo_api.exceptions.UserNotFoundException
 import com.backend.todo_api.exceptions.ProjectNotFoundException
-import com.backend.todo_api.model.ActionType
+import com.backend.todo_api.model.enums.ActionType
 import com.backend.todo_api.model.AdminSecurityResource
-import com.backend.todo_api.model.RoleType
-import com.backend.todo_api.model.ScopeType
+import com.backend.todo_api.model.enums.RoleType
+import com.backend.todo_api.model.enums.ScopeType
 import com.backend.todo_api.model.UserSecurityResource
-import com.backend.todo_api.model.toEntity
+import com.backend.todo_api.model.enums.toEntity
 import com.backend.todo_api.model.toSecurityResource
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional

@@ -12,6 +12,12 @@ import com.backend.todo_api.exceptions.ActionForbiddenException
 import com.backend.todo_api.exceptions.PermissionAlreadyExistsException
 import com.backend.todo_api.exceptions.PermissionNotFoundException
 import com.backend.todo_api.model.*
+import com.backend.todo_api.model.enums.ActionType
+import com.backend.todo_api.model.enums.DepartmentSpecializationType
+import com.backend.todo_api.model.enums.ResourceType
+import com.backend.todo_api.model.enums.RoleType
+import com.backend.todo_api.model.enums.ScopeType
+import com.backend.todo_api.model.enums.toEntity
 import jakarta.persistence.EntityNotFoundException
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional

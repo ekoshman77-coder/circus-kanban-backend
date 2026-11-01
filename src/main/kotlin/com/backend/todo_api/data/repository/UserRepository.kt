@@ -1,7 +1,7 @@
 package com.backend.todo_api.data.repository
 
 import com.backend.todo_api.data.entity.UserEntity
-import com.backend.todo_api.model.RoleType
+import com.backend.todo_api.model.enums.RoleType
 import org.springframework.data.jpa.repository.JpaRepository
 import org.springframework.data.jpa.repository.Query
 import org.springframework.data.repository.query.Param

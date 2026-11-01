@@ -1,6 +1,7 @@
 package com.backend.todo_api.controller
 
 import com.backend.todo_api.dto.PlannerFeedbackRequest
+import com.backend.todo_api.dto.PlannerGroupRecommendationRequest
 import com.backend.todo_api.dto.PlannerRecommendationRequest
 import com.backend.todo_api.dto.PlannerRecommendationsResponse
 import com.backend.todo_api.dto.SnoozyTodoRequest
@@ -28,6 +29,16 @@ class PlannerController(
             userEnergy = request.userEnergy,
             workingTimeLeft = request.workingTimeLeft
         )
+    }
+
+    @PostMapping("/group-recommend")
+    fun getGroupRecommendations(
+        principal: Principal,
+        @RequestBody request: PlannerGroupRecommendationRequest
+    ): PlannerRecommendationsResponse {
+        val userId = getUserIdFromPrincipal (principal)
+        val recommendations = plannerCoordinator.getRecommendationsByGroup(userId, request.desiredGroup)
+        return recommendations
     }
 
     /**

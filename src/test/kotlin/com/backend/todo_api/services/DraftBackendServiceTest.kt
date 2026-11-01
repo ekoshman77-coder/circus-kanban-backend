@@ -7,9 +7,9 @@ import com.backend.todo_api.data.entity.ScopeEntity
 import com.backend.todo_api.data.repository.DraftChainRepository
 import com.backend.todo_api.dto.DelegateDraftDto
 import com.backend.todo_api.dto.DelegationTargetDto
-import com.backend.todo_api.model.DepartmentSpecializationType
-import com.backend.todo_api.model.RoleType
-import com.backend.todo_api.model.ScopeType
+import com.backend.todo_api.model.enums.DepartmentSpecializationType
+import com.backend.todo_api.model.enums.RoleType
+import com.backend.todo_api.model.enums.ScopeType
 import com.backend.todo_api.model.UserContext
 import io.mockk.*
 import org.junit.jupiter.api.Assertions.*

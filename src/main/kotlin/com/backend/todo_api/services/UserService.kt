@@ -21,19 +21,14 @@ import com.backend.todo_api.dto.UserResponseDto
 import com.backend.todo_api.dto.UserUpdateProfileDto
 import com.backend.todo_api.exceptions.ActionForbiddenException
 import com.backend.todo_api.exceptions.UserAlreadyExistsException
-import com.backend.todo_api.exceptions.UserDeletedException
 import com.backend.todo_api.exceptions.UserNotApprovedException
 import com.backend.todo_api.exceptions.UserNotFoundException
-import com.backend.todo_api.model.ActionType
-import com.backend.todo_api.model.ResourceType
-import com.backend.todo_api.model.RoleType
+import com.backend.todo_api.model.enums.ActionType
+import com.backend.todo_api.model.enums.RoleType
 import com.backend.todo_api.model.UserSecurityResource
-import com.backend.todo_api.model.toEntity
-import com.backend.todo_api.services.UserContextResolver
+import com.backend.todo_api.model.enums.toEntity
 import jakarta.transaction.Transactional
-import org.springframework.http.HttpStatus
 import org.springframework.stereotype.Service
-import org.springframework.web.server.ResponseStatusException
 
 @Service
 class UserService(

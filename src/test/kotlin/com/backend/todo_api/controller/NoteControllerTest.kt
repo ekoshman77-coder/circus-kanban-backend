@@ -2,7 +2,7 @@ package com.backend.todo_api.controller
 
 import com.backend.todo_api.dto.CreateNoteDto
 import com.backend.todo_api.dto.NoteDto
-import com.backend.todo_api.model.ScopeType
+import com.backend.todo_api.model.enums.ScopeType
 import com.backend.todo_api.services.NoteService
 import io.mockk.every
 import io.mockk.just

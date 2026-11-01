@@ -1,6 +1,6 @@
 package com.backend.todo_api.dto
 
-import com.backend.todo_api.model.RoleType
+import com.backend.todo_api.model.enums.RoleType
 
 // Das, was wir zurückgeben (wie besprochen: nur das Nötigste!)
 data class SearchUserDto(

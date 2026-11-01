@@ -6,10 +6,10 @@ import com.backend.todo_api.data.repository.RoleRepository
 import com.backend.todo_api.data.repository.ScopeRepository
 import com.backend.todo_api.data.repository.UserRepository
 import com.backend.todo_api.exceptions.UserDeletedException
-import com.backend.todo_api.model.RoleType
-import com.backend.todo_api.model.ScopeType
+import com.backend.todo_api.model.enums.RoleType
+import com.backend.todo_api.model.enums.ScopeType
 import com.backend.todo_api.model.UserContext
-import com.backend.todo_api.model.toEntity
+import com.backend.todo_api.model.enums.toEntity
 import org.springframework.stereotype.Component
 
 @Component
