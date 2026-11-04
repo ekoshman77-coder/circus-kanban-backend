@@ -203,7 +203,7 @@ class PlannerCoordinator(
     @Transactional
     fun processUserFeedback(request: PlannerFeedbackRequest) {
         request.rejectedTodos.forEach { r ->
-            println("   -> Rejected TodoId: ${r.todoId} | Reason: ${r.rejectReason}")
+            println("   -> Rejected TodoId: ${r.todoId} | Reason: ${r.reason}")
         }
         println("--------------------------------------------------")
 
@@ -238,21 +238,25 @@ class PlannerCoordinator(
                 println("⚠️ [COORDINATOR WARN] Keine gespeicherte Rec in DB für Accepted Todo $acceptedId gefunden!")
             }
 
-            matchingRecs.forEach { savedRec ->
+            planners.forEach { planner ->
+                val recommendation = matchingRecs.find{rec -> rec.plannerType == planner.plannerType}
+                val isOwn = recommendation != null
+                val useRec = recommendation?: matchingRecs.first()
+
                 val feedback = FeedbackForPlanner(
                     userId = request.userId,
                     todoId = acceptedId,
-                    userEnergy = savedRec.energyLevel,
-                    workingTimeLeft = savedRec.workingTimeLeft,
+                    userEnergy = useRec.energyLevel,
+                    workingTimeLeft = useRec.workingTimeLeft,
                     accepted = true,
-                    rejectReason = null,
-                    score = savedRec.score,
-                    timeUntilDue = savedRec.timeUntilDue,
-                    effort = savedRec.effort
+                    reason = null,
+                    score = useRec.score,
+                    timeUntilDue = useRec.timeUntilDue,
+                    effort = useRec.effort,
+                    isOwnRecommendation = isOwn
                 )
-                val targetPlanner = planners.firstOrNull { it.plannerType == savedRec.plannerType }
-                println("👉 [COORDINATOR] Sende ACCEPTED Feedback an Planner: ${savedRec.plannerType} (Gefunden: ${targetPlanner != null})")
-                targetPlanner?.processUserFeedback(feedback)
+                println("👉 [COORDINATOR] Sende ACCEPTED Feedback an Planner: ${useRec.plannerType} (Gefunden: ${planner != null})")
+                planner.processUserFeedback(feedback)
             }
         }
 
@@ -279,10 +283,11 @@ class PlannerCoordinator(
                     userEnergy = savedRec.energyLevel,
                     workingTimeLeft = savedRec.workingTimeLeft,
                     accepted = false,
-                    rejectReason = rejected.rejectReason,
+                    reason = rejected.reason,
                     score = savedRec.score,
                     timeUntilDue = savedRec.timeUntilDue,
-                    effort = savedRec.effort
+                    effort = savedRec.effort,
+                    isOwnRecommendation = true
                 )
                 val targetPlanner = planners.firstOrNull { it.plannerType == savedRec.plannerType }
                 println("👉 [COORDINATOR] Sende REJECTED Feedback an Planner: ${savedRec.plannerType} (Gefunden: ${targetPlanner != null})")

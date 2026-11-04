@@ -6,8 +6,9 @@ data class FeedbackForPlanner(
     val userEnergy: EnergyLevel,
     val workingTimeLeft: Long,
     val accepted: Boolean,
-    val rejectReason: String?,
+    val reason: String?,
     val score: Double,
     val timeUntilDue: Long,
-    val effort: Int
+    val effort: Int,
+    val isOwnRecommendation: Boolean
 )

@@ -66,7 +66,7 @@ class NeuralPlannerService(
         )
         println("🏋️ [TRAIN] Feedback verarbeitet für Todo-ID ${feedback.todoId} | Target: $target")
         // Netz mit dem Feedback des Nutzers trainieren
-        neuralNetwork.train(inputs, target)
+        neuralNetwork.train(inputs, target, feedback.isOwnRecommendation)
     }
 
     // =============================================================================

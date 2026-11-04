@@ -141,13 +141,13 @@ class NeuralNetwork(
         return rootNeuron.forward(inputs)
     }
 
-    fun train(inputs: DoubleArray, target: Double) {
+    fun train(inputs: DoubleArray, target: Double, isOwnFeedback: Boolean = true) {
         steps++
         val output = predict(inputs)
         val outputError = target - output
         val rootDelta = outputError * rootNeuron.getActivationDerivative()
 
-        backpropagateRecursive(rootNeuron, inputs, rootDelta, learningRate)
+        backpropagateRecursive(rootNeuron, inputs, rootDelta, if (isOwnFeedback) learningRate else learningRate / 10.0)
     }
 
     private fun backpropagateRecursive(neuron: Neuron, rawInputs: DoubleArray, delta: Double, learningRate: Double) {
