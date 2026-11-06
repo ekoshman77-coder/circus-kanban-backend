@@ -81,45 +81,6 @@ class AIController(private val trainManager: TrainManager,
     }
 
     /**
-     * Berechnet die perfekte, smarte Empfehlung für den Planer (inkl. Modus-Codes!)
-     * POST /api/ai/planner/recommend
-     */
-    @PostMapping("/planner/recommend")
-    fun getPlannerRecommendation(@RequestBody request: PlannerRecommendationRequest): PlannerRecommendationsResponse {
-        // Der smartPlannerService gibt jetzt direkt das neue RecommendedTodoResponse-Objekt
-        // mit modeCode und reasonCode zurück!
-        return plannerCoordinator.getRecommendations(
-            userId = request.userId,
-            userEnergy = request.userEnergy,
-            workingTimeLeft = request.workingTimeLeft
-        )
-    }
-
-    /**
-     * Nimmt das Nutzer-Feedback entgegen, damit unser System nativ lernt
-     * POST /api/ai/planner/feedback
-     */
-    /**
-     * Nimmt das Nutzer-Feedback entgegen und liest den Kontext aus der DB-Runde
-     * POST /api/ai/planner/feedback
-     */
-    @PostMapping("/planner/feedback")
-    fun handlePlannerFeedback(@RequestBody request: PlannerFeedbackRequest): ResponseEntity<Unit> {
-        plannerCoordinator.processUserFeedback(request)
-        return ResponseEntity.ok().build()
-    }
-
-    /**
-     * Snoozed ein Todo in der DB (ohne KI-Feedback)
-     * POST /api/ai/planner/snooze
-     */
-    @PostMapping("/planner/snooze")
-    fun handleSnoozing(@Valid @RequestBody request: SnoozyTodoRequest): ResponseEntity<Unit> {
-        plannerCoordinator.snoozeTodoInBackend(request.todoId, request.durationInMin)
-        return ResponseEntity.ok().build()
-    }
-
-    /**
      * 🕵️‍♂️ 3. KI-Vorhersage für Sanitization Reasons
      * POST /api/ai/predict-sanitization
      */

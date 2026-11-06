@@ -4,10 +4,9 @@ import com.backend.todo_api.data.entity.MilestoneEntity
 import com.backend.todo_api.data.entity.NoteEntity
 import com.backend.todo_api.data.entity.PlannerSettingsEntity
 import com.backend.todo_api.data.entity.ProjectEntity
-import com.backend.todo_api.data.entity.TodoEntity
 import com.backend.todo_api.data.entity.UserEntity
 import com.backend.todo_api.data.repository.ScopeRepository
-import com.backend.todo_api.model.toEntity
+import com.backend.todo_api.model.enums.toEntity
 import java.util.UUID
 
 fun PlannerSettingsEntity.toDto() = PlannerSettingsDto(

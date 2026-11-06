@@ -70,10 +70,11 @@ class NeuralPlannerServiceTest {
             userEnergy = EnergyLevel.HIGH,
             workingTimeLeft = 5L,
             accepted = true, // 👈 Nutzer hat akzeptiert -> Target 1.0
-            rejectReason = null,
+            reason = null,
             score = 0.85,
             timeUntilDue = 3600000L,
-            effort = 4
+            effort = 4,
+            isOwnRecommendation = true
         )
 
         service.processUserFeedback(feedback)
@@ -95,10 +96,11 @@ class NeuralPlannerServiceTest {
             userEnergy = EnergyLevel.LOW,
             workingTimeLeft = 2L,
             accepted = false, // 👈 Nutzer hat abgelehnt -> Target 0.0
-            rejectReason = "too_heavy",
+            reason = "too_heavy",
             score = 0.40,
             timeUntilDue = 0L,
-            effort = 9
+            effort = 9,
+            isOwnRecommendation = true
         )
 
         service.processUserFeedback(feedback)

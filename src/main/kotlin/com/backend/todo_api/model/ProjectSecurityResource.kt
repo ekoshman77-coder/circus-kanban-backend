@@ -1,6 +1,8 @@
 package com.backend.todo_api.model
 
 import com.backend.todo_api.data.entity.ProjectEntity
+import com.backend.todo_api.model.enums.ResourceType
+import com.backend.todo_api.model.enums.ScopeType
 
 data class ProjectSecurityResource(
     val id: String,

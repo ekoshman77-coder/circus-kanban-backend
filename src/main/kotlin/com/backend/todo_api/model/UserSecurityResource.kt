@@ -1,5 +1,8 @@
 package com.backend.todo_api.model
 
+import com.backend.todo_api.model.enums.ResourceType
+import com.backend.todo_api.model.enums.ScopeType
+
 data class UserSecurityResource(
     val targetUserId: String? = null,
     val departmentId: String? = null,

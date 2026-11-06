@@ -1,12 +1,13 @@
 package com.backend.todo_api.services
 
 import com.backend.todo_api.dto.MasterDataResponseDto
-import com.backend.todo_api.model.ActionType
-import com.backend.todo_api.model.DepartmentSpecializationType
-import com.backend.todo_api.model.PatternTypeEnum
-import com.backend.todo_api.model.ResourceType
-import com.backend.todo_api.model.RoleType
-import com.backend.todo_api.model.ScopeType
+import com.backend.todo_api.model.enums.ActionType
+import com.backend.todo_api.model.enums.DepartmentSpecializationType
+import com.backend.todo_api.model.enums.PatternTypeEnum
+import com.backend.todo_api.model.enums.ResourceType
+import com.backend.todo_api.model.enums.RoleType
+import com.backend.todo_api.model.enums.ScopeType
+import com.backend.todo_api.model.enums.TodoGroupChoice
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 
@@ -24,7 +25,8 @@ class MasterDataService {
             resources = ResourceType.entries.map { it.name },
             actions = ActionType.entries.map { it.name },
             specializations = DepartmentSpecializationType.entries.map { it.name },
-            patternTypes = PatternTypeEnum.entries.map { it.name }
+            patternTypes = PatternTypeEnum.entries.map { it.name },
+            todoGroupChoices = TodoGroupChoice.entries.map { it.name }
         )
     }
 

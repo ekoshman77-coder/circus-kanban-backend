@@ -9,9 +9,9 @@ import com.backend.todo_api.dto.CreateDepartmentDto
 import com.backend.todo_api.dto.DepartmentDto
 import com.backend.todo_api.exceptions.ActionForbiddenException
 import com.backend.todo_api.mapper.DepartmentMapper
-import com.backend.todo_api.model.ActionType
+import com.backend.todo_api.model.enums.ActionType
 import com.backend.todo_api.model.DepartmentSecurityResource
-import com.backend.todo_api.model.ScopeType
+import com.backend.todo_api.model.enums.ScopeType
 import com.backend.todo_api.model.toSecurityResource
 import jakarta.transaction.Transactional
 import org.springframework.stereotype.Service

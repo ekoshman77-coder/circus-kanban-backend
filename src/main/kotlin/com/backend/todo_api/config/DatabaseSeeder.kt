@@ -4,9 +4,9 @@ import com.backend.todo_api.constants.AppConstants
 import com.backend.todo_api.data.entity.DepartmentEntity
 import com.backend.todo_api.data.repository.DepartmentSpecializationRepository
 import com.backend.todo_api.data.repository.ScopeRepository
-import com.backend.todo_api.model.DepartmentSpecializationType
+import com.backend.todo_api.model.enums.DepartmentSpecializationType
 
-import com.backend.todo_api.model.ScopeType
+import com.backend.todo_api.model.enums.ScopeType
 import org.springframework.boot.ApplicationArguments
 import org.springframework.boot.ApplicationRunner
 import org.springframework.stereotype.Component

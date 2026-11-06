@@ -40,55 +40,81 @@ class BayesPlannerService(
         val todo = todoRepository.findById(feedback.todoId).orElse(null) ?: return
 
         if (feedback.accepted) {
-            // 🎉 BELOHNUNG: Nutzer hat die Empfehlung akzeptiert!
-            val effortCategory = if ((todo.effort ?: 0) > 3) "aufwendig" else "leicht"
-
-            updateScore(
-                userId = feedback.userId,
-                energy = feedback.userEnergy,
-                type = PreferenceType.EFFORT,
-                value = effortCategory,
-                plusPoints = 5
-            )
-        } else {
-            // 👎 BESTRAFUNG: Punkteabzug je nach Ablehnungsgrund (rejectReason)
-            when (feedback.rejectReason) {
-                "too_heavy" -> {
-                    val effortCategory = if ((todo.effort ?: 0) > 3) "aufwendig" else "leicht"
-                    updateScore(
-                        userId = feedback.userId,
-                        energy = feedback.userEnergy,
-                        type = PreferenceType.EFFORT,
-                        value = effortCategory,
-                        plusPoints = -10
-                    )
-                }
-
-                "too_long" -> {
-                    val timeCategory = if ((todo.effort ?: 0) > 3) "lang" else "kurz"
-                    updateScore(
-                        userId = feedback.userId,
-                        energy = EnergyLevel.ANY,
-                        type = PreferenceType.TIME,
-                        value = timeCategory,
-                        plusPoints = -8
-                    )
-                }
-
-                "no_motivation" -> {
+            // 🎉 AKZEPTIERT MIT BEWUSSTEM GRUND:
+            when (feedback.reason) {
+                "motivation" -> {
                     val todoTag = todo.category ?: "Standard"
                     updateScore(
                         userId = feedback.userId,
                         energy = EnergyLevel.ANY,
                         type = PreferenceType.MOTIVATION,
                         value = "Tag:$todoTag",
-                        plusPoints = -15
+                        plusPoints = 5
+                    )
+                }
+
+                "effort" -> {
+                    val effortCategory = if ((todo.effort ?: 0) > 3) "aufwendig" else "leicht"
+                    updateScore(
+                        userId = feedback.userId,
+                        energy = feedback.userEnergy,
+                        type = PreferenceType.EFFORT,
+                        value = effortCategory,
+                        plusPoints = 5
+                    )
+                }
+
+                "time" -> {
+                    val timeCategory = if ((todo.effort ?: 0) > 3) "lang" else "kurz"
+                    updateScore(
+                        userId = feedback.userId,
+                        energy = EnergyLevel.ANY,
+                        type = PreferenceType.TIME,
+                        value = timeCategory,
+                        plusPoints = 5
+                    )
+                }
+
+                else -> {
+                    // Standard-Klick ohne Grund (oder ein unbekannter Wert) -> Kein Ratespiel für Bayes.
+                }
+            }
+        } else {
+            // 👎 ABGELEHNT: Wie besprochen nur bestrafen, wenn Bayes auch der Urheber war!
+            if (!feedback.isOwnRecommendation) {
+                return
+            }
+
+            when (feedback.reason) {
+                "too_heavy" -> {
+                    val effortCategory = if ((todo.effort ?: 0) > 3) "aufwendig" else "leicht"
+                    updateScore(
+                        feedback.userId,
+                        feedback.userEnergy,
+                        PreferenceType.EFFORT,
+                        effortCategory,
+                        -10
+                    )
+                }
+
+                "too_long" -> {
+                    val timeCategory = if ((todo.effort ?: 0) > 3) "lang" else "kurz"
+                    updateScore(feedback.userId, EnergyLevel.ANY, PreferenceType.TIME, timeCategory, -8) //[cite: 7]
+                }
+
+                "no_motivation" -> {
+                    val todoTag = todo.category ?: "Standard"
+                    updateScore(
+                        feedback.userId,
+                        EnergyLevel.ANY,
+                        PreferenceType.MOTIVATION,
+                        "Tag:$todoTag",
+                        -15
                     )
                 }
             }
         }
     }
-
 
     // Hilfsmethode: Sucht den Eintrag oder legt ihn neu an und verändert den Score
     private fun updateScore(userId: String, energy: EnergyLevel, type: PreferenceType, value: String, plusPoints: Int) {
@@ -150,8 +176,6 @@ class BayesPlannerService(
     // =============================================================================
     // 🛠️ PRIVATE HILFSMETHODEN FÜR DAS REFACTORING
     // =============================================================================
-
-
     private fun applyAiFocusFiltering(pool: List<TodoEntity>, userEnergy: EnergyLevel): List<TodoEntity> {
         var filteredPool = pool
         if (userEnergy == EnergyLevel.LOW) {
@@ -226,23 +250,4 @@ class BayesPlannerService(
 
         return scoredTodos.maxByOrNull { it.second }
     }
-
-//    @Transactional
-//    override fun snoozeTodoInBackend(todoId: String, snoozeDurationInMinutes: Int): TodoEntity? {
-//        val todo = todoRepository.findById(todoId).orElse(null) ?: return null
-//
-//        // Aktuelle Zeit + X Minuten in Millisekunden rechnen
-//        val millisInFuture = snoozeDurationInMinutes * 60 * 1000L
-//        todo.snoozedUntil = System.currentTimeMillis() + millisInFuture
-//
-//        val currentDateTime = java.time.Instant.ofEpochMilli(System.currentTimeMillis())
-//        val snoozedUntilDateTime = java.time.Instant.ofEpochMilli(todo.snoozedUntil)
-//        println("⏰ --- SNOOZE ZEITZONEN-CHECK ---")
-//        println("Aktuelle Serverzeit UTC: $currentDateTime")
-//        println("Ticket gesnoozed bis UTC: $snoozedUntilDateTime")
-//        println("Roher Long-Wert in DB: ${todo.snoozedUntil}")
-//        println("---------------------------------")
-//
-//        return todoRepository.save(todo)
-//    }
 }

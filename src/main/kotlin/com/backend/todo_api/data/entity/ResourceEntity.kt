@@ -1,6 +1,6 @@
 package com.backend.todo_api.data.entity
 
-import com.backend.todo_api.model.ResourceType
+import com.backend.todo_api.model.enums.ResourceType
 import jakarta.persistence.Column
 import jakarta.persistence.Entity
 import jakarta.persistence.EnumType

@@ -7,7 +7,6 @@ import com.backend.todo_api.data.repository.UserRepository
 import com.backend.todo_api.data.repository.specifications.TodoSpecifications
 import com.backend.todo_api.dto.AdminTodoFilterDto
 import com.backend.todo_api.dto.CreateTodoDto
-import com.backend.todo_api.dto.GamificationResult
 import com.backend.todo_api.dto.QuickPanelMode
 import com.backend.todo_api.dto.SanitizationFeedbackDto
 import com.backend.todo_api.dto.SyncResultDto
@@ -16,11 +15,11 @@ import com.backend.todo_api.dto.TodoDto
 import com.backend.todo_api.dto.TodoUpdateResponse
 import com.backend.todo_api.exceptions.ActionForbiddenException
 import com.backend.todo_api.exceptions.TodoNotFoundException
-import com.backend.todo_api.model.ActionType
+import com.backend.todo_api.model.enums.ActionType
 import com.backend.todo_api.model.AiContextType
 import com.backend.todo_api.model.FocusType
-import com.backend.todo_api.model.RoleType
-import com.backend.todo_api.model.ScopeType
+import com.backend.todo_api.model.enums.RoleType
+import com.backend.todo_api.model.enums.ScopeType
 import com.backend.todo_api.model.SensitiveMatch
 import com.backend.todo_api.model.TodoSecurityResource
 import com.backend.todo_api.providers.AiGlobalDataProvider
@@ -28,7 +27,6 @@ import com.backend.todo_api.services.sanitization.SanitizationService
 import com.backend.todo_api.utils.AiTextUtil
 import org.springframework.stereotype.Service
 import com.backend.todo_api.validation.*
-import com.fasterxml.jackson.core.type.TypeReference
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
 import org.springframework.data.jpa.domain.Specification

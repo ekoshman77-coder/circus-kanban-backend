@@ -5,6 +5,7 @@ import com.backend.todo_api.model.AiContextType // 👑 Import für das Enum!
 import com.backend.todo_api.services.BayesPlannerService // 👑 Import für den neuen Service!
 import com.backend.todo_api.services.PlannerCoordinator
 import com.backend.todo_api.services.TrainManager
+import com.backend.todo_api.services.sanitization.SanitizationService
 import com.fasterxml.jackson.databind.ObjectMapper
 import io.mockk.every
 import io.mockk.mockk
@@ -23,9 +24,10 @@ class AIControllerTest {
     private val trainManager: TrainManager = mockk()
     private val bayesPlannerService: BayesPlannerService = mockk()
     private val plannerCoordinator: PlannerCoordinator = mockk()
+    private val sanitizationService: SanitizationService = mockk()
 
     // 2. Wir übergeben beide Mocks brav an den Controller-Konstruktor
-    private val aiController = AIController(trainManager = trainManager, plannerCoordinator = plannerCoordinator)
+    private val aiController = AIController(trainManager = trainManager, plannerCoordinator = plannerCoordinator, sanitizationService)
 
     private val mockMvc: MockMvc = MockMvcBuilders.standaloneSetup(aiController).build()
     private val objectMapper = ObjectMapper()
@@ -36,8 +38,14 @@ class AIControllerTest {
             text = "Flyway-Skript schreiben"
         )
 
-        // ✨ REPARIERT: Wir nutzen jetzt das echte Enum AiContextType.TODO_CATEGORY, genau wie der Controller!
-        every { trainManager.trainAndPredictGlobal("Flyway-Skript schreiben", AiContextType.TODO_CATEGORY) } returns "Datenbank"
+        // 🎯 FIX: Nutze any() für den Lambda-Parameter, damit MockK nicht über die Funktionsreferenz stolpert
+        every {
+            trainManager.trainAndPredictGlobal(
+                eq("Flyway-Skript schreiben"),
+                eq(AiContextType.TODO_CATEGORY),
+                any()
+            )
+        } returns "Datenbank"
 
         mockMvc.perform(
             post("/api/ai/predict")
@@ -69,7 +77,7 @@ class AIControllerTest {
     fun `GET categories sollte die GLOBALEN Kategorien ohne User-Einschraenkung laden`() {
         val mockGlobalCategories = listOf("Arbeit", "Datenbank", "Infrastruktur")
 
-        every { trainManager.getGlobalCategories(AiContextType.TODO_CATEGORY) } returns mockGlobalCategories
+        every { trainManager.getGlobalCategories<String>(AiContextType.TODO_CATEGORY) } returns mockGlobalCategories
 
         mockMvc.perform(
             // 🎯 FIX: Hier den Pfad an die aktuelle Controller-URL anpassen!

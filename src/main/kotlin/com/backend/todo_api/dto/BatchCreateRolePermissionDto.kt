@@ -1,10 +1,10 @@
 package com.backend.todo_api.dto
 
-import com.backend.todo_api.model.ActionType
-import com.backend.todo_api.model.DepartmentSpecializationType
-import com.backend.todo_api.model.ResourceType
-import com.backend.todo_api.model.RoleType
-import com.backend.todo_api.model.ScopeType
+import com.backend.todo_api.model.enums.ActionType
+import com.backend.todo_api.model.enums.DepartmentSpecializationType
+import com.backend.todo_api.model.enums.ResourceType
+import com.backend.todo_api.model.enums.RoleType
+import com.backend.todo_api.model.enums.ScopeType
 
 data class BatchCreateRolePermissionDto(
     val resource: ResourceType,

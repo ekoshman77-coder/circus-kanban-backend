@@ -1,14 +1,24 @@
 {
-  "name": "PlannerEvaluationNet",
+  "name": "PlannerEvaluationNetV6_ParallelFull",
   "nodes": [
-    { "id": "LEAF_1", "type": "LEAF", "inputCount": 4 },
-    { "id": "LEAF_2", "type": "LEAF", "inputCount": 4 },
-    { "id": "LEAF_3", "type": "LEAF", "inputCount": 4 },
-    { "id": "LEAF_4", "type": "LEAF", "inputCount": 4 },
+    { "id": "LEAF_BRANCH1_A", "type": "LEAF", "inputCount": 2, "inputIndices": [0, 3] },
+    { "id": "LEAF_BRANCH1_B", "type": "LEAF", "inputCount": 2, "inputIndices": [1, 2] },
+    { "id": "LEAF_BRANCH2_A", "type": "LEAF", "inputCount": 2, "inputIndices": [0, 3] },
+    { "id": "LEAF_BRANCH2_B", "type": "LEAF", "inputCount": 2, "inputIndices": [1, 2] },
+    {
+      "id": "BRANCH_1",
+      "type": "BRANCH",
+      "children": ["LEAF_BRANCH1_A", "LEAF_BRANCH1_B"]
+    },
+    {
+      "id": "BRANCH_2",
+      "type": "BRANCH",
+      "children": ["LEAF_BRANCH2_A", "LEAF_BRANCH2_B"]
+    },
     {
       "id": "ROOT",
       "type": "ROOT",
-      "children": ["LEAF_1", "LEAF_2", "LEAF_3", "LEAF_4"]
+      "children": ["BRANCH_1", "BRANCH_2"]
     }
   ]
 }

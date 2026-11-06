@@ -7,7 +7,7 @@ import com.backend.todo_api.dto.SanitizationFeedbackDto
 import com.backend.todo_api.exceptions.InvalidInputException
 import com.backend.todo_api.exceptions.ResourceAlreadyExistsException
 import com.backend.todo_api.model.AiContextType
-import com.backend.todo_api.model.PatternTypeEnum
+import com.backend.todo_api.model.enums.PatternTypeEnum
 import com.backend.todo_api.model.SanitizationCleanResult
 import com.backend.todo_api.model.SanitizationInput
 import com.backend.todo_api.model.SanitizationPattern

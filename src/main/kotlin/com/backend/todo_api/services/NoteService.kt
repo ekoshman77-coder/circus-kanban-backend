@@ -3,7 +3,6 @@ package com.backend.todo_api.services
 import com.backend.todo_api.data.entity.NoteEntity
 import com.backend.todo_api.data.repository.NoteRepository
 import com.backend.todo_api.data.repository.ScopeRepository
-import com.backend.todo_api.data.repository.UserRepository
 import com.backend.todo_api.dto.CreateNoteDto
 import com.backend.todo_api.dto.NoteDto
 import com.backend.todo_api.dto.toDto
@@ -11,17 +10,16 @@ import com.backend.todo_api.dto.toNewEntity
 import com.backend.todo_api.exceptions.ActionForbiddenException
 import com.backend.todo_api.exceptions.NoteNotFoundException
 import com.backend.todo_api.exceptions.ResourceAlreadyExistsException
-import com.backend.todo_api.model.ActionType
+import com.backend.todo_api.model.enums.ActionType
 import com.backend.todo_api.model.AiContextType
-import com.backend.todo_api.model.ScopeType
+import com.backend.todo_api.model.enums.ScopeType
 import com.backend.todo_api.providers.AiGlobalDataProvider
 import jakarta.transaction.Transactional
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
 import org.springframework.stereotype.Service
-import com.backend.todo_api.exceptions.UserDeletedException
 import com.backend.todo_api.model.NoteSecurityResource
-import com.backend.todo_api.model.toEntity
+import com.backend.todo_api.model.enums.toEntity
 import com.backend.todo_api.model.toSecurityResource
 
 @Service
