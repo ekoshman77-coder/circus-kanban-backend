@@ -15,3 +15,14 @@ data class RecommendedTodoResponse(
     val plannerDetails: List<PlannerRecommendationDetail>,
     val modeCode: String = "STANDARD" // Z. B. "STANDARD" oder "ALL_SNOOZED"
 )
+
+data class MorningRecommendationItem(
+    val todo: TodoDto,
+    val plannerDetails: List<PlannerRecommendationDetail>,
+    val modeCode: String? = "STANDARD"
+)
+
+data class MorningRecommendationsResponse(
+    val roundId: String,
+    val recommendations: List<MorningRecommendationItem>
+)

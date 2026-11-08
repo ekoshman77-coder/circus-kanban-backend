@@ -1,6 +1,8 @@
 package com.backend.todo_api.controller
 
 import com.backend.todo_api.dto.DailyBlueprintResponse
+import com.backend.todo_api.dto.MorningRecommendationItem
+import com.backend.todo_api.dto.MorningRecommendationsResponse
 import com.backend.todo_api.dto.PlannerFeedbackRequest
 import com.backend.todo_api.dto.PlannerGroupRecommendationRequest
 import com.backend.todo_api.dto.PlannerRecommendationRequest
@@ -69,7 +71,7 @@ class PlannerController(
     @GetMapping("/morning")
     fun getMorningRecommendations(
         principal: Principal
-    ): PlannerRecommendationsResponse {
+    ): MorningRecommendationsResponse {
         val userId = getUserIdFromPrincipal(principal)
         return plannerCoordinator.getMorningRecommendations(userId)
     }
