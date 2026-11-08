@@ -11,7 +11,7 @@ data class PlannerRecommendationDetail(
 
 // Die Haupt-Response
 data class RecommendedTodoResponse(
-    val todo: TodoDto?,
+    val todoId: String,
     val plannerDetails: List<PlannerRecommendationDetail>,
     val modeCode: String = "STANDARD" // Z. B. "STANDARD" oder "ALL_SNOOZED"
 )

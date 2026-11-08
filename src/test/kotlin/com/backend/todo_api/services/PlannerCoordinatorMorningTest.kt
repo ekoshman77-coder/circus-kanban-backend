@@ -1,6 +1,7 @@
 package com.backend.todo_api.services
 
 import com.backend.todo_api.data.entity.TodoEntity
+import com.backend.todo_api.data.repository.PlannerSettingsRepository
 import com.backend.todo_api.data.repository.RecommendationRoundRepository
 import com.backend.todo_api.data.repository.TodoRepository
 import com.backend.todo_api.data.repository.UserRepository
@@ -21,13 +22,15 @@ class PlannerCoordinatorMorningTest {
     private val recommendationRoundRepository = mockk<RecommendationRoundRepository>()
     private val todoService = mockk<TodoService>()
     private val plannerInterface = mockk<PlannerInterface>()
+    private val plannerSettingsRepository = mockk<PlannerSettingsRepository>()
 
     private val coordinator = PlannerCoordinator(
         todoRepository = todoRepository,
         userRepository = userRepository,
         recommendationRoundRepository = recommendationRoundRepository,
         todoService = todoService,
-        planners = listOf(plannerInterface)
+        planners = listOf(plannerInterface),
+        plannerSettingsRepository = plannerSettingsRepository
     )
 
     @Test

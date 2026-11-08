@@ -8,10 +8,13 @@ import com.backend.todo_api.data.repository.PlannerSettingsRepository
 import com.backend.todo_api.data.repository.RecommendationRoundRepository
 import com.backend.todo_api.data.repository.TodoRepository
 import com.backend.todo_api.data.repository.UserRepository
+import com.backend.todo_api.dto.BlueprintSlotDto
+import com.backend.todo_api.dto.DailyBlueprintResponse
 import com.backend.todo_api.dto.PlannerFeedbackRequest
 import com.backend.todo_api.dto.PlannerRecommendationDetail
 import com.backend.todo_api.dto.PlannerRecommendationsResponse
 import com.backend.todo_api.dto.RecommendedTodoResponse
+import com.backend.todo_api.dto.SlotRecommendationDto
 import com.backend.todo_api.model.EnergyLevel
 import com.backend.todo_api.model.FeedbackForPlanner
 import com.backend.todo_api.model.PlannerType
@@ -19,6 +22,8 @@ import com.backend.todo_api.model.enums.TodoGroupChoice
 import com.backend.todo_api.validation.validateUserExists
 import jakarta.transaction.Transactional
 import org.springframework.stereotype.Service
+import java.time.Clock
+import java.time.LocalTime
 
 @Service
 class PlannerCoordinator(
@@ -26,7 +31,9 @@ class PlannerCoordinator(
     private val userRepository: UserRepository,
     private val recommendationRoundRepository: RecommendationRoundRepository,
     private val todoService: TodoService,
-    private val planners: List<PlannerInterface>
+    private val planners: List<PlannerInterface>,
+    private val plannerSettingsRepository: PlannerSettingsRepository,
+    private val clock: Clock = Clock.systemDefaultZone()
 ) {
 
     companion object {
@@ -53,11 +60,18 @@ class PlannerCoordinator(
         if (nonSnoozedPool.isEmpty()) {
             val earliestWakeupTodo = matchPool.minByOrNull { it.snoozedUntil }
 
+            if (earliestWakeupTodo == null) {
+                return PlannerRecommendationsResponse(
+                    roundId = "",
+                    recommendations = emptyList()
+                )
+            }
+
             return PlannerRecommendationsResponse(
                 roundId = "",
                 recommendations = listOf(
                     RecommendedTodoResponse(
-                        todo = earliestWakeupTodo?.let { todoService.mapToDto(it) },
+                        todoId = earliestWakeupTodo.id ,
                         plannerDetails = emptyList(), // Keine KI beteiligt!
                         modeCode = "ALL_SNOOZED"      // 🎯 Jetzt glasklar!
                     )
@@ -115,7 +129,6 @@ class PlannerCoordinator(
         val groupedRecommendations = plannerRecommendations.groupBy { it.todoId }
 
         val recommendations = groupedRecommendations.map { (todoId, plannerRecs) ->
-            val todo = candidatePool.firstOrNull { it.id == todoId }
 
             val details = plannerRecs.map { rec ->
                 PlannerRecommendationDetail(
@@ -126,7 +139,7 @@ class PlannerCoordinator(
             }
 
             RecommendedTodoResponse(
-                todo = todo?.let { todoService.mapToDto(it) },
+                todoId = todoId,
                 plannerDetails = details,
                 modeCode = "STANDARD"
             )
@@ -255,7 +268,7 @@ class PlannerCoordinator(
                     effort = useRec.effort,
                     isOwnRecommendation = isOwn
                 )
-                println("👉 [COORDINATOR] Sende ACCEPTED Feedback an Planner: ${useRec.plannerType} (Gefunden: ${planner != null})")
+                println("👉 [COORDINATOR] Sende ACCEPTED Feedback an Planner: ${useRec.plannerType} (Gefunden: ${planner})")
                 planner.processUserFeedback(feedback)
             }
         }
@@ -379,7 +392,7 @@ class PlannerCoordinator(
                 )
             }
             RecommendedTodoResponse(
-                todo = todo?.let { todoService.mapToDto(it) },
+                todoId = todoId,
                 plannerDetails = details,
                 modeCode = "MORNING_MODE"
             )
@@ -473,7 +486,6 @@ class PlannerCoordinator(
         // Response fürs Frontend bauen
         val groupedRecommendations = plannerRecommendations.groupBy { it.todoId }
         val recommendations = groupedRecommendations.map { (todoId, plannerRecs) ->
-            val todo = candidatePool.firstOrNull { it.id == todoId }
             val details = plannerRecs.map { rec ->
                 PlannerRecommendationDetail(
                     plannerType = rec.plannerType,
@@ -482,7 +494,7 @@ class PlannerCoordinator(
                 )
             }
             RecommendedTodoResponse(
-                todo = todo?.let { todoService.mapToDto(it) },
+                todoId = todoId,
                 plannerDetails = details,
                 modeCode = "GROUP_CHOICE_$desiredGroup"
             )
@@ -494,4 +506,182 @@ class PlannerCoordinator(
         )
     }
 
+    private fun generateSlot(
+        userId: String,
+        startTime: String,
+        endTime: String,
+        energyLevel: EnergyLevel,
+        workingTimeLeft: Long,
+        reasonText: String,
+        candidatePool: List<TodoEntity>,
+    assignedTodoIds: MutableSet<String>,
+    currentTimeMillis: Long
+    ): BlueprintSlotDto? {
+        // 1. Zuerst die regulär verfügbaren (nicht gesnoozedten) Kandidaten suchen
+        var availableCandidates = candidatePool.filter { todo ->
+            !assignedTodoIds.contains(todo.id) && todo.snoozedUntil <= currentTimeMillis
+        }
+
+        // 2. 🟢 UNSER NEUER FALLBACK: Wenn alle aktiven schlafen, nimm das, das am frühesten aufwacht!
+        if (availableCandidates.isEmpty()) {
+            val remainingCandidates = candidatePool.filter { todo ->
+                !assignedTodoIds.contains(todo.id)
+            }
+
+            if (remainingCandidates.isNotEmpty()) {
+                val earliestWakeupTodo = remainingCandidates.minByOrNull { it.snoozedUntil }
+                if (earliestWakeupTodo != null) {
+                    availableCandidates = listOf(earliestWakeupTodo)
+                }
+            }
+        }
+
+        if (availableCandidates.isEmpty()) return null
+
+        // Planner berechnen wie gewohnt ihre Empfehlungen...
+        val recs = planners.mapNotNull { planner ->
+            planner.calculatePerfectRecommendation(userId, availableCandidates, energyLevel, workingTimeLeft)
+        }
+
+        if (recs.isEmpty()) return null
+
+        val groupedRecs = recs.groupBy { it.todoId }
+
+        val slotRecommendations = groupedRecs.map { (todoId, todoRecs) ->
+            assignedTodoIds.add(todoId)
+            SlotRecommendationDto(
+                todoId = todoId,
+                plannerDetails = todoRecs.map { rec ->
+                    PlannerRecommendationDetail(rec.plannerType, rec.score, rec.reason)
+                }
+            )
+        }
+
+        return BlueprintSlotDto(
+            startTime = startTime,
+            endTime = endTime,
+            energyLevel = energyLevel,
+            recommendations = slotRecommendations,
+            reason = reasonText
+        )
+    }
+
+    @Transactional
+    fun generateDailyBlueprint(userId: String): DailyBlueprintResponse {
+        validateUserExists(userId, userRepository)
+
+        val currentHour = LocalTime.now(clock).hour
+        val currentTimeMillis = System.currentTimeMillis()
+        val matchPool = todoRepository.findActivePlannerTodosForUser(userId)
+
+        if (matchPool.isEmpty()) {
+            return DailyBlueprintResponse(roundId = "", userId = userId, generatedAtHour = currentHour, slots = emptyList())
+        }
+
+        val settings = plannerSettingsRepository.findById(userId).orElseGet {
+            PlannerSettingsEntity(id = userId, defaultWorkingHours = 8, primeTimeStartHour = 10, primeTimeEndHour = 18)
+        }
+
+        val slots = mutableListOf<BlueprintSlotDto>()
+        val assignedTodoIds = mutableSetOf<String>()
+
+        // 1. Früh-Slot (Vor der Prime Time)
+        if (currentHour < settings.primeTimeStartHour) {
+            generateSlot(
+                userId = userId,
+                startTime = "$currentHour:00",
+                endTime = "${settings.primeTimeStartHour}:00",
+                energyLevel = EnergyLevel.LOW,
+                workingTimeLeft = 2L,
+                reasonText = "Sanfter Start: Perfekt zum Ankommen und für kleinere Aufgaben vor der Prime Time.",
+                candidatePool = matchPool,
+                assignedTodoIds = assignedTodoIds,
+                currentTimeMillis = currentTimeMillis
+            )?.let { slots.add(it) }
+        }
+
+        // 2. Prime-Time-Slot (High Focus)
+        val primeStart = maxOf(currentHour, settings.primeTimeStartHour)
+        if (primeStart < settings.primeTimeEndHour) {
+            generateSlot(
+                userId = userId,
+                startTime = "$primeStart:00",
+                endTime = "${settings.primeTimeEndHour}:00",
+                energyLevel = EnergyLevel.HIGH,
+                workingTimeLeft = 3L,
+                reasonText = "Prime-Time-Peak: Deine biologische Hochphase für schwere Aufgaben & High Focus.",
+                candidatePool = matchPool,
+                assignedTodoIds = assignedTodoIds,
+                currentTimeMillis = currentTimeMillis
+            )?.let { slots.add(it) }
+        }
+
+        // 3. Nachmittags-Slot (Ausklang / Low Focus)
+// 3. Nachmittags-Slot (Ausklang / Low Focus)
+        val afternoonStart = settings.primeTimeEndHour
+        val afternoonEnd = minOf(afternoonStart + 3, 20)
+        if (currentHour < afternoonEnd) {
+            generateSlot(
+                userId = userId,
+                startTime = "$afternoonStart:00",
+                endTime = "$afternoonEnd:00",
+                energyLevel = EnergyLevel.LOW,
+                workingTimeLeft = 2L,
+                reasonText = "Energie-Ausklang: Ideal für Routine, E-Mails und leichtere Aufgaben zum Feierabend.",
+                candidatePool = matchPool,
+                assignedTodoIds = assignedTodoIds,
+                currentTimeMillis = currentTimeMillis
+            )?.let { slots.add(it) }
+        }
+
+        // 4. 🌙 NEU: Spätabend- / Nachtschicht-Slot (für späte Planer nach 21:00 Uhr)
+        val nightStart = maxOf(currentHour, afternoonEnd)
+        if (nightStart < 24) {
+            generateSlot(
+                userId = userId,
+                startTime = "$nightStart:00",
+                endTime = "24:00",
+                energyLevel = EnergyLevel.LOW,
+                workingTimeLeft = 1L,
+                reasonText = "Nachtschicht / Spät-Focus: Ruhige Abendstunden für die letzten offenen Dinge oder Reflexion.",
+                candidatePool = matchPool,
+                assignedTodoIds = assignedTodoIds,
+                currentTimeMillis = currentTimeMillis
+            )?.let { slots.add(it) }
+        }
+
+        // Feedback-Runde in DB speichern
+        val round = RecommendationRoundEntity(userId = userId, createdAt = currentTimeMillis)
+        slots.forEach { slot ->
+            // Wir iterieren über die Liste der Empfehlungen im Slot
+            slot.recommendations.forEach { recDto ->
+                val todoEntity = matchPool.firstOrNull { it.id == recDto.todoId }
+                val todoEffort = todoEntity?.effort ?: 0
+
+                // Für jede Empfehlung speichern wir die Details der beteiligten Planner (Bayes, Neural, etc.)
+                recDto.plannerDetails.forEach { det ->
+                    round.recommendations += PlannerRecommendationEntity(
+                        round = round,
+                        plannerType = det.plannerType,
+                        todoId = recDto.todoId,
+                        score = det.score,
+                        energyLevel = slot.energyLevel,
+                        timeUntilDue = 0L,
+                        workingTimeLeft = 3L,
+                        effort = todoEffort,
+                        reason = det.reasonCode
+                    )
+                }
+            }
+        }
+
+        val savedRound = recommendationRoundRepository.save(round)
+
+        return DailyBlueprintResponse(
+            roundId = savedRound.id,
+            userId = userId,
+            generatedAtHour = currentHour,
+            slots = slots
+        )
+    }
 }
