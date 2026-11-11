@@ -19,4 +19,6 @@ interface UserAiPreferenceRepository : JpaRepository<UserAiPreference, String> {
         preferenceType: PreferenceType,
         preferenceValue: String
     ): UserAiPreference?
+
+    fun deleteByUserId(userId: String)
 }

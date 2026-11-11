@@ -27,6 +27,8 @@ import jakarta.transaction.Transactional
 import org.springframework.stereotype.Service
 import java.time.Clock
 import java.time.LocalTime
+import java.util.concurrent.locks.ReentrantLock
+import kotlin.concurrent.withLock
 
 @Service
 class PlannerCoordinator(
@@ -38,6 +40,7 @@ class PlannerCoordinator(
     private val plannerSettingsRepository: PlannerSettingsRepository,
     private val clock: Clock = Clock.systemDefaultZone()
 ) {
+    private val lock = ReentrantLock()
 
     companion object {
         private const val MAX_COOLDOWN_TURNS = 3
@@ -48,7 +51,7 @@ class PlannerCoordinator(
         userId: String,
         userEnergy: EnergyLevel,
         workingTimeLeft: Long
-    ): PlannerRecommendationsResponse {
+    ): PlannerRecommendationsResponse = lock.withLock {
 
         validateUserExists(userId, userRepository)
 
@@ -107,7 +110,7 @@ class PlannerCoordinator(
         // 7. Neue Recommendation-Round erzeugen.
         val round = RecommendationRoundEntity(
             userId = userId,
-            createdAt = System.currentTimeMillis()
+            createdAt = clock.millis()
         )
 
         // 8. Planner-Ergebnisse als Entities an die Round hängen.
@@ -162,14 +165,14 @@ class PlannerCoordinator(
      */
     private fun getCandidatePool(
         availableTodos: List<TodoEntity>
-    ): List<TodoEntity> {
+    ): List<TodoEntity> = lock.withLock {
 
         decrementCooldowns(availableTodos)
 
         return filterPoolByCooldown(availableTodos)
     }
 
-    private fun decrementCooldowns(pool: List<TodoEntity>) {
+    private fun decrementCooldowns(pool: List<TodoEntity>) = lock.withLock {
         pool.forEach { todo ->
             if (todo.cooldownTurns > 0) {
                 todo.cooldownTurns -= 1
@@ -179,9 +182,9 @@ class PlannerCoordinator(
         }
     }
 
-    private fun filterPoolByCooldown(
+    private fun filterPoolByCooldown (
         pool: List<TodoEntity>
-    ): List<TodoEntity> {
+    ): List<TodoEntity>  = lock.withLock {
 
         for (cooldownLevel in 0..MAX_COOLDOWN_TURNS) {
             println("check cooldownlevel = ${cooldownLevel}")
@@ -203,13 +206,13 @@ class PlannerCoordinator(
      */
     private fun filterAvailableTodos(
         todos: List<TodoEntity>
-    ): List<TodoEntity> {
+    ): List<TodoEntity>  = lock.withLock {
 
         if (todos.isEmpty()) {
             return emptyList()
         }
 
-        val currentTime = System.currentTimeMillis()
+        val currentTime = clock.millis()
 
         return todos.filter {
             it.snoozedUntil <= currentTime
@@ -217,7 +220,7 @@ class PlannerCoordinator(
     }
 
     @Transactional
-    fun processUserFeedback(request: PlannerFeedbackRequest) {
+    fun processUserFeedback(request: PlannerFeedbackRequest) = lock.withLock {
         request.rejectedTodos.forEach { r ->
             println("   -> Rejected TodoId: ${r.todoId} | Reason: ${r.reason}")
         }
@@ -269,7 +272,8 @@ class PlannerCoordinator(
                     score = useRec.score,
                     timeUntilDue = useRec.timeUntilDue,
                     effort = useRec.effort,
-                    isOwnRecommendation = isOwn
+                    isOwnRecommendation = isOwn,
+                    category = useRec.category
                 )
                 println("👉 [COORDINATOR] Sende ACCEPTED Feedback an Planner: ${useRec.plannerType} (Gefunden: ${planner})")
                 planner.processUserFeedback(feedback)
@@ -303,7 +307,8 @@ class PlannerCoordinator(
                     score = savedRec.score,
                     timeUntilDue = savedRec.timeUntilDue,
                     effort = savedRec.effort,
-                    isOwnRecommendation = true
+                    isOwnRecommendation = true,
+                    category = savedRec.category
                 )
                 val targetPlanner = planners.firstOrNull { it.plannerType == savedRec.plannerType }
                 println("👉 [COORDINATOR] Sende REJECTED Feedback an Planner: ${savedRec.plannerType} (Gefunden: ${targetPlanner != null})")
@@ -317,17 +322,17 @@ class PlannerCoordinator(
      * Reines Datenbank-Snooze – schickt KEIN Feedback an die Planner!
      */
     @Transactional
-    fun snoozeTodoInBackend(todoId: String, durationInMin: Int): TodoEntity? {
+    fun snoozeTodoInBackend(todoId: String, durationInMin: Int): TodoEntity? = lock.withLock {
         val todo = todoRepository.findById(todoId).orElse(null) ?: return null
 
         val millisInFuture = durationInMin * 60 * 1000L
-        todo.snoozedUntil = System.currentTimeMillis() + millisInFuture
+        todo.snoozedUntil = clock.millis() + millisInFuture
 
         return todoRepository.save(todo)
     }
 
     @Transactional
-    fun getMorningRecommendations(userId: String): MorningRecommendationsResponse {
+    fun getMorningRecommendations(userId: String): MorningRecommendationsResponse = lock.withLock {
         validateUserExists(userId, userRepository)
 
         // 1. Pause-Todos aus der DB holen oder Fallbacks generieren
@@ -361,7 +366,7 @@ class PlannerCoordinator(
         // 3. Recommendation-Round in der DB speichern
         val round = RecommendationRoundEntity(
             userId = userId,
-            createdAt = System.currentTimeMillis()
+            createdAt = clock.millis()
         )
 
         plannerRecommendations.forEach { recommendation ->
@@ -419,7 +424,7 @@ class PlannerCoordinator(
     fun getRecommendationsByGroup(
         userId: String,
         desiredGroup: TodoGroupChoice
-    ): PlannerRecommendationsResponse {
+    ): PlannerRecommendationsResponse = lock.withLock {
         validateUserExists(userId, userRepository)
 
         val matchPool = todoRepository.findActivePlannerTodosForUser(userId)
@@ -475,7 +480,7 @@ class PlannerCoordinator(
         // Recommendation-Round speichern
         val round = RecommendationRoundEntity(
             userId = userId,
-            createdAt = System.currentTimeMillis()
+            createdAt = clock.millis()
         )
 
         plannerRecommendations.forEach { recommendation ->
@@ -527,7 +532,7 @@ class PlannerCoordinator(
         candidatePool: List<TodoEntity>,
     assignedTodoIds: MutableSet<String>,
     currentTimeMillis: Long
-    ): BlueprintSlotDto? {
+    ): BlueprintSlotDto? = lock.withLock {
         // 1. Zuerst die regulär verfügbaren (nicht gesnoozedten) Kandidaten suchen
         var availableCandidates = candidatePool.filter { todo ->
             !assignedTodoIds.contains(todo.id) && todo.snoozedUntil <= currentTimeMillis
@@ -578,11 +583,11 @@ class PlannerCoordinator(
     }
 
     @Transactional
-    fun generateDailyBlueprint(userId: String): DailyBlueprintResponse {
+    fun generateDailyBlueprint(userId: String): DailyBlueprintResponse = lock.withLock {
         validateUserExists(userId, userRepository)
 
         val currentHour = LocalTime.now(clock).hour
-        val currentTimeMillis = System.currentTimeMillis()
+        val currentTimeMillis = clock.millis()
         val matchPool = todoRepository.findActivePlannerTodosForUser(userId)
 
         if (matchPool.isEmpty()) {
@@ -628,7 +633,7 @@ class PlannerCoordinator(
         }
 
         // 3. Nachmittags-Slot (Ausklang / Low Focus)
-// 3. Nachmittags-Slot (Ausklang / Low Focus)
+// 3. Nachmittags-Slot (Ausklang / medium Focus)
         val afternoonStart = settings.primeTimeEndHour
         val afternoonEnd = minOf(afternoonStart + 3, 20)
         if (currentHour < afternoonEnd) {
@@ -636,7 +641,7 @@ class PlannerCoordinator(
                 userId = userId,
                 startTime = "$afternoonStart:00",
                 endTime = "$afternoonEnd:00",
-                energyLevel = EnergyLevel.LOW,
+                energyLevel = EnergyLevel.MEDIUM,
                 workingTimeLeft = 2L,
                 reasonText = "Energie-Ausklang: Ideal für Routine, E-Mails und leichtere Aufgaben zum Feierabend.",
                 candidatePool = matchPool,
@@ -694,5 +699,14 @@ class PlannerCoordinator(
             generatedAtHour = currentHour,
             slots = slots
         )
+    }
+
+    @Transactional
+    fun retrainAI(userId: String) = lock.withLock {
+
+        validateUserExists(userId, userRepository)
+        planners.forEach { it.runReTraining(userId = userId) }
+        // Für Gemini: hier müssen wir noch besprechen, ob wir bei Bayes nur die Daten für diesen User löschen müssen
+        recommendationRoundRepository.deleteAll()
     }
 }

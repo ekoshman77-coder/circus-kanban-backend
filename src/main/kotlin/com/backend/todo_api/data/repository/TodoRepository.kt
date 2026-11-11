@@ -22,17 +22,19 @@ interface TodoRepository : JpaRepository<TodoEntity, String>, JpaSpecificationEx
     fun findByUserIdAndMilestoneIdIn(userId: String, milestoneIds: List<String>): List<TodoEntity>
 
     fun findByAssignedUserId(assignedUserId: String): List<TodoEntity>
+
     @Transactional
-    @Modifying
+    @Modifying(clearAutomatically = true, flushAutomatically = true)
     @Query("""
-    DELETE FROM TodoEntity 
-    WHERE effort = :effort 
-      AND done = :done 
-      AND createdAt < :todayMidnight
+    UPDATE TodoEntity t 
+    SET t.isArchived = true 
+    WHERE t.effort = :effort 
+      AND t.done = :done 
+      AND t.dueDate < :todayMidnight
 """)
-    fun deleteOldPauseTickets(
+    fun archiveOldPauseTickets(
         @Param("effort") effort: Int,
-        @Param("done") done: Boolean, // 🌟 Hier auch auf done angepasst
+        @Param("done") done: Boolean,
         @Param("todayMidnight") todayMidnight: Long
     ): Int
 
@@ -64,7 +66,6 @@ interface TodoRepository : JpaRepository<TodoEntity, String>, JpaSpecificationEx
     //         -- BLOCK 1: Meine privaten, persönlichen Aufgaben
     //        -- BLOCK 2: ALLE Aufgaben aus Projekten, bei denen ich im Team bin
     //     -- Zeitfenster-Schutz für bereits erledigte Aufgaben
-
     @Query("""
     SELECT t FROM TodoEntity t 
     WHERE t.isArchived = false 

@@ -74,7 +74,8 @@ class NeuralPlannerServiceTest {
             score = 0.85,
             timeUntilDue = 3600000L,
             effort = 4,
-            isOwnRecommendation = true
+            isOwnRecommendation = true,
+            category = "Allgemein"
         )
 
         service.processUserFeedback(feedback)
@@ -100,7 +101,8 @@ class NeuralPlannerServiceTest {
             score = 0.40,
             timeUntilDue = 0L,
             effort = 9,
-            isOwnRecommendation = true
+            isOwnRecommendation = true,
+            category = "Allgemein"
         )
 
         service.processUserFeedback(feedback)

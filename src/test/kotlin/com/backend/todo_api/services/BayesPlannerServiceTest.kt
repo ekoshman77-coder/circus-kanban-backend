@@ -53,7 +53,8 @@ class BayesPlannerServiceTest {
             score = 1.0,
             timeUntilDue = 1000L,
             effort = 3,
-            isOwnRecommendation = true
+            isOwnRecommendation = true,
+            category = "Allgemein"
         )
 
         every { todoRepository.findById(todoId) } returns Optional.of(todo)
@@ -94,7 +95,8 @@ class BayesPlannerServiceTest {
             score = 1.0,
             timeUntilDue = 1000L,
             effort = 3,
-            isOwnRecommendation = true
+            isOwnRecommendation = true,
+            category = "Allgemein"
         )
 
         every { todoRepository.findById(todoId) } returns Optional.of(todo)
@@ -122,7 +124,8 @@ class BayesPlannerServiceTest {
             score = 1.0,
             timeUntilDue = 1000L,
             effort = 3,
-            isOwnRecommendation = false // Fremder Vorschlag!
+            isOwnRecommendation = false, // Fremder Vorschlag!
+            category = "Allgemein"
         )
 
         // Da der Service das Todo zuerst lädt, müssen wir das hier mocken:

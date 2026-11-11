@@ -84,4 +84,13 @@ class PlannerController(
         val daily = plannerCoordinator.generateDailyBlueprint(userId)
         return  daily
     }
+
+    @PostMapping("/train")
+    fun train(
+        principal: Principal
+    ): ResponseEntity<Unit> {
+        val userId = getUserIdFromPrincipal(principal)
+        plannerCoordinator.retrainAI(userId)
+        return ResponseEntity.ok().build()
+    }
 }

@@ -1,24 +1,28 @@
 {
-  "name": "PlannerEvaluationNetV6_ParallelFull",
+  "name": "PlannerEvaluationNetV8_ThreeBranches",
   "nodes": [
-    { "id": "LEAF_BRANCH1_A", "type": "LEAF", "inputCount": 2, "inputIndices": [0, 3] },
-    { "id": "LEAF_BRANCH1_B", "type": "LEAF", "inputCount": 2, "inputIndices": [1, 2] },
-    { "id": "LEAF_BRANCH2_A", "type": "LEAF", "inputCount": 2, "inputIndices": [0, 3] },
-    { "id": "LEAF_BRANCH2_B", "type": "LEAF", "inputCount": 2, "inputIndices": [1, 2] },
+    { "id": "LEAF_B1", "type": "LEAF", "inputCount": 2, "inputIndices": [0, 3] },
+    { "id": "LEAF_B2", "type": "LEAF", "inputCount": 2, "inputIndices": [1, 2] },
+    { "id": "LEAF_B3", "type": "LEAF", "inputCount": 1, "inputIndices": [4] },
     {
       "id": "BRANCH_1",
       "type": "BRANCH",
-      "children": ["LEAF_BRANCH1_A", "LEAF_BRANCH1_B"]
+      "children": ["LEAF_B1"]
     },
     {
       "id": "BRANCH_2",
       "type": "BRANCH",
-      "children": ["LEAF_BRANCH2_A", "LEAF_BRANCH2_B"]
+      "children": ["LEAF_B2"]
+    },
+    {
+      "id": "BRANCH_3",
+      "type": "BRANCH",
+      "children": ["LEAF_B3"]
     },
     {
       "id": "ROOT",
       "type": "ROOT",
-      "children": ["BRANCH_1", "BRANCH_2"]
+      "children": ["BRANCH_1", "BRANCH_2", "BRANCH_3"]
     }
   ]
 }

@@ -99,6 +99,21 @@ class NeuralNetwork(
         }
     }
 
+    // Nachschulung bei vergessen
+    public fun runReTraining() {
+        neuronRepository.deleteAll()
+
+        // 2. Gewichte und Biases im Arbeitsspeicher auf frische Zufallswerte zurücksetzen
+        allEntitiesMap.values.forEach { entity ->
+            entity.bias = Random.nextDouble(-1.0, 1.0)
+            for (i in entity.weights.indices) {
+                entity.weights[i] = Random.nextDouble(-0.2, 0.2)
+            }
+        }
+
+        runBaselineTraining()
+    }
+
     /**
      * Führt das automatische Grund-Training aus (10 gute + 10 schlechte Beispiele pro Epoche).
      */
@@ -109,7 +124,7 @@ class NeuralNetwork(
         }
         val inputSize = getRequiredInputSize()
 
-        repeat(1000) {
+        repeat(5000) {
             val batch = mutableListOf<Pair<DoubleArray, Double>>()
 
             // 10x Gute Beispiele (alle Werte hoch) -> Target 0.9

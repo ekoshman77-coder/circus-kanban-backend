@@ -173,21 +173,35 @@ class BayesPlannerService(
         )
      }
 
+    override fun runReTraining(userId: String) {
+        preferenceRepository.deleteByUserId(userId)
+    }
+
     // =============================================================================
-    // 🛠️ PRIVATE HILFSMETHODEN FÜR DAS REFACTORING
+    // 🛠️ PRIVATE HILFSMETHODEN
     // =============================================================================
     private fun applyAiFocusFiltering(pool: List<TodoEntity>, userEnergy: EnergyLevel): List<TodoEntity> {
-        var filteredPool = pool
+        // 1. Dringende Aufgaben IMMER komplett unangetastet lassen!
+        val urgentTasks = pool.filter { isUrgent(it) }
+        val nonUrgentPool = pool.filter { !isUrgent(it) }
+
+        // 2. Den Fokus-Filter nur auf die normalen, nicht-dringenden Aufgaben anwenden
+        var filteredPool = nonUrgentPool
         if (userEnergy == EnergyLevel.LOW) {
-            filteredPool = pool.filter { focusPredictorService.predict(it.task) == FocusType.LOW_FOCUS }
+            filteredPool = nonUrgentPool.filter { focusPredictorService.predict(it.task) == FocusType.LOW_FOCUS }
         } else if (userEnergy == EnergyLevel.HIGH) {
-            val highFocusTasks = pool.filter { focusPredictorService.predict(it.task) == FocusType.HIGH_FOCUS }
+            val highFocusTasks = nonUrgentPool.filter { focusPredictorService.predict(it.task) == FocusType.HIGH_FOCUS }
             if (highFocusTasks.isNotEmpty()) {
                 filteredPool = highFocusTasks
             }
         }
-        // Bugfix im Fallback: Wenn filteredPool leer ist, nimm das originale pool!
-        return if (filteredPool.isEmpty()) pool else filteredPool
+
+        if (filteredPool.isEmpty()) {
+            filteredPool = nonUrgentPool
+        }
+
+        // 3. Dringende Aufgaben und gefilterten Pool wieder zusammenführen
+        return urgentTasks + filteredPool
     }
 
     private fun calculateScoresAndGetWinner(
@@ -205,8 +219,20 @@ class BayesPlannerService(
             val isHeavy = (todo.effort ?: 0) > 3
 
             // Dringlichkeit
-            if (isUrgent(todo)) {
-                score += 100
+            val currentTime = System.currentTimeMillis()
+            val timeDifference = todo.dueDate - currentTime
+            val hoursOverdueOrUntilDue = timeDifference / (1000.0 * 60 * 60)
+
+            if (hoursOverdueOrUntilDue < 0) {
+                // 🚨 1. Fall: BEREITS ÜBERSCHRITTEN (Vergangenheit)
+                // Starker Basis-Boost plus zusätzlicher Push pro vergangenem Tag
+                val daysOverdue = -hoursOverdueOrUntilDue / 24.0
+                val overdueScore = 200 + (daysOverdue * 50).toInt()
+                score += overdueScore
+            } else if (hoursOverdueOrUntilDue <= 48) {
+                // ⚡ 2. Fall: Fällig in den nächsten 48 Stunden (heute / morgen)
+                // Ein kräftiger, dominanter Boost, der normale Aufgaben sicher schlägt.
+                score += 150
             }
 
             // Kombi-Score oder Zeitfenster-Score

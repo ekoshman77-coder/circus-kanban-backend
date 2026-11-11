@@ -38,5 +38,7 @@ class PlannerRecommendationEntity(
 
     var effort: Int = 0,
 
-    var reason: String = ""
+    var reason: String = "",
+
+    val category: String = "Allgemein"
 )

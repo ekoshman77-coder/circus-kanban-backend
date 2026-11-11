@@ -39,28 +39,24 @@ class PauseCleanupService(
      */
     private fun executeCleanup() {
         try {
-            // Wir holen uns den exakten Start des heutigen Tages (00:00 Uhr) in Millisekunden
-            val heuteMitternachtMs = LocalDate.now()
+            val todayMidnightMs = LocalDate.now()
                 .atStartOfDay(ZoneId.systemDefault())
                 .toInstant()
                 .toEpochMilli()
 
-            // Datenbank-Löschung:
-            // Wir löschen alle Todos mit effort == 0, die NICHT erledigt sind
-            // UND deren Erstellungsdatum VOR heute Mitternacht liegt.
-            val gelöschteAnzahl = todoRepository.deleteOldPauseTickets(
+            val archivedCount = todoRepository.archiveOldPauseTickets(
                 effort = 0,
-                done = false, // 🌟 done statt completed
-                todayMidnight = heuteMitternachtMs
+                done = false,
+                todayMidnight = todayMidnightMs
             )
 
-            if (gelöschteAnzahl > 0) {
-                logger.info("🧹 Erfolgreich $gelöschteAnzahl alte Pausetickets von gestern entfernt.")
+            if (archivedCount > 0) {
+                logger.info("📦 Successfully archived $archivedCount expired pause tickets for the AI.")
             } else {
-                logger.info("✨ Keine alten Pausetickets zum Löschen gefunden. Die Oase ist sauber!")
+                logger.info("✨ No old pause tickets found to archive. The oasis is clean!")
             }
         } catch (e: Exception) {
-            logger.error("❌ Fehler beim Aufräumen der Pausetickets: ${e.message}", e)
+            logger.error("❌ Error archiving pause tickets: ${e.message}", e)
         }
     }
 }

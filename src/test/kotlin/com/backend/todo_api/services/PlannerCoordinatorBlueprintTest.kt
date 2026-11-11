@@ -62,11 +62,16 @@ class PlannerCoordinatorBlueprintTest {
             PlannerSettingsEntity(id = userId, primeTimeStartHour = 10, primeTimeEndHour = 18)
         )
 
-        // Todos: Eins ist aktiv, eins schläft bis in die Zukunft
+        val futureTime = Instant.parse("2026-06-06T23:59:00Z").toEpochMilli()
+
         val todos = listOf(
-            TodoEntity(id = "todo-active", userId = userId, task = "Wichtige Aufgabe", effort = 3, snoozedUntil = 0L),
-            TodoEntity(id = "todo-snoozed", userId = userId, task = "Schlafende Aufgabe", effort = 1, snoozedUntil = currentTime + 3600000L)
+            TodoEntity(id = "todo-active-1", userId = userId, task = "Aufgabe 1", effort = 3, snoozedUntil = 0L),
+            TodoEntity(id = "todo-active-2", userId = userId, task = "Aufgabe 2", effort = 3, snoozedUntil = 0L),
+            TodoEntity(id = "todo-active-3", userId = userId, task = "Aufgabe 3", effort = 2, snoozedUntil = 0L),
+            TodoEntity(id = "todo-active-4", userId = userId, task = "Aufgabe 4", effort = 1, snoozedUntil = 0L),
+            TodoEntity(id = "todo-snoozed", userId = userId, task = "Schlafende Aufgabe", effort = 1, snoozedUntil = futureTime)
         )
+
         every { todoRepository.findActivePlannerTodosForUser(userId) } returns todos
 
         val recommendationSlot = slot<List<TodoEntity>>()
@@ -74,13 +79,14 @@ class PlannerCoordinatorBlueprintTest {
             plannerInterface.calculatePerfectRecommendation(
                 userId = userId,
                 candidates = capture(recommendationSlot),
-                userEnergy = EnergyLevel.HIGH,
+                userEnergy = any(),
                 workingTimeLeft = any()
             )
         } answers {
+            val candidates = secondArg<List<TodoEntity>>() // Holt die übergebenen Kandidaten des jeweiligen Slots
             com.backend.todo_api.model.PlannerRecomendation(
                 plannerType = PlannerType.BAYES,
-                todoId = "todo-active",
+                todoId = candidates.first().id, // Nimmt immer das nächste verfügbare aktive Todo
                 score = 0.88,
                 energyLevel = EnergyLevel.HIGH,
                 timeUntilDue = 0L,
@@ -102,6 +108,6 @@ class PlannerCoordinatorBlueprintTest {
         // Prüfen, ob das schlafende Todo aus den Kandidaten herausgefiltert wurde
         val passedCandidates = recommendationSlot.captured
         assert(passedCandidates.none { it.id == "todo-snoozed" })
-        assert(passedCandidates.any { it.id == "todo-active" })
+        assert(passedCandidates.any { it.id.startsWith("todo-active") })
     }
 }

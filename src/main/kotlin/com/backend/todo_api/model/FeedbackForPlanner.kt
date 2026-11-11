@@ -10,5 +10,6 @@ data class FeedbackForPlanner(
     val score: Double,
     val timeUntilDue: Long,
     val effort: Int,
-    val isOwnRecommendation: Boolean
+    val isOwnRecommendation: Boolean,
+    val category: String
 )
