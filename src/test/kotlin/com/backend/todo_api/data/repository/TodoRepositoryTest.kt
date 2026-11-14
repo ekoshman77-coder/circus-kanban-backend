@@ -2,6 +2,7 @@ package com.backend.todo_api.data.repository
 
 import com.backend.todo_api.data.entity.TodoEntity
 import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.context.SpringBootTest
@@ -15,6 +16,11 @@ class TodoRepositoryTest {
 
     @Autowired
     private lateinit var todoRepository: TodoRepository
+
+    @BeforeEach
+    fun setUp() {
+        todoRepository.deleteAll()
+    }
 
     @Test
     fun `archiveOldPauseTickets should only archive expired uncompleted pause todos`() {

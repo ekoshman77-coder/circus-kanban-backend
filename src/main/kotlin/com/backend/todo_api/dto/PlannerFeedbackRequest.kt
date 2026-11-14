@@ -13,6 +13,6 @@ data class TodoFeedback(
 data class PlannerFeedbackRequest(
     val userId: String,
     val roundId: String,
-    val acceptedTodoId: String? = null,
+    val acceptedTodo: TodoFeedback?,
     val rejectedTodos: List<TodoFeedback> = emptyList()
 )

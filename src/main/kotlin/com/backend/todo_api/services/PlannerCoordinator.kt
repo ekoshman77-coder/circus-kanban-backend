@@ -24,9 +24,13 @@ import com.backend.todo_api.model.PlannerType
 import com.backend.todo_api.model.enums.TodoGroupChoice
 import com.backend.todo_api.validation.validateUserExists
 import jakarta.transaction.Transactional
+import org.springframework.scheduling.annotation.Scheduled
 import org.springframework.stereotype.Service
 import java.time.Clock
+import java.time.LocalDate
 import java.time.LocalTime
+import java.time.ZoneId
+import java.util.UUID
 import java.util.concurrent.locks.ReentrantLock
 import kotlin.concurrent.withLock
 
@@ -35,10 +39,9 @@ class PlannerCoordinator(
     private val todoRepository: TodoRepository,
     private val userRepository: UserRepository,
     private val recommendationRoundRepository: RecommendationRoundRepository,
-    private val todoService: TodoService,
     private val planners: List<PlannerInterface>,
     private val plannerSettingsRepository: PlannerSettingsRepository,
-    private val clock: Clock = Clock.systemDefaultZone()
+    private val clock: Clock = Clock.systemDefaultZone(),
 ) {
     private val lock = ReentrantLock()
 
@@ -56,7 +59,7 @@ class PlannerCoordinator(
         validateUserExists(userId, userRepository)
 
         // 1. Alle aktiven Todos holen
-        val matchPool = todoRepository.findActivePlannerTodosForUser(userId)
+        val matchPool = todoRepository.findOpenProjectTodosForUser(userId)
 
         // 2. Snooze-Filter
         val nonSnoozedPool = filterAvailableTodos(matchPool)
@@ -242,8 +245,11 @@ class PlannerCoordinator(
         println("--------------------------------------------------")
 
         // 2. Akzeptiertes Todo verarbeiten (falls eins gewählt wurde)
-        request.acceptedTodoId?.let { acceptedId ->
-            println("🚀 [COORDINATOR] Verarbeite ACCEPTED TodoId: $acceptedId")
+// 2. Akzeptiertes Todo verarbeiten (falls eins gewählt wurde)
+        request.acceptedTodo?.let { accepted ->
+            val acceptedId = accepted.todoId
+            println("🚀 [COORDINATOR] Verarbeite ACCEPTED TodoId: $acceptedId mit Grund: ${accepted.reason}")
+
             val todo = todoRepository.findById(acceptedId).orElse(null)
             if (todo != null) {
                 todo.cooldownTurns = 0
@@ -257,26 +263,9 @@ class PlannerCoordinator(
                 println("⚠️ [COORDINATOR WARN] Keine gespeicherte Rec in DB für Accepted Todo $acceptedId gefunden!")
             }
 
-            planners.forEach { planner ->
-                val recommendation = matchingRecs.find{rec -> rec.plannerType == planner.plannerType}
-                val isOwn = recommendation != null
-                val useRec = recommendation?: matchingRecs.first()
-
-                val feedback = FeedbackForPlanner(
-                    userId = request.userId,
-                    todoId = acceptedId,
-                    userEnergy = useRec.energyLevel,
-                    workingTimeLeft = useRec.workingTimeLeft,
-                    accepted = true,
-                    reason = null,
-                    score = useRec.score,
-                    timeUntilDue = useRec.timeUntilDue,
-                    effort = useRec.effort,
-                    isOwnRecommendation = isOwn,
-                    category = useRec.category
-                )
-                println("👉 [COORDINATOR] Sende ACCEPTED Feedback an Planner: ${useRec.plannerType} (Gefunden: ${planner})")
-                planner.processUserFeedback(feedback)
+            matchingRecs.forEach { rec ->
+                rec.isAccepted = true
+                rec.feedbackReason = accepted.reason // 🎯 Hier speichern wir den Akzeptanz-Grund (z.B. "motivation", "effort", etc.)
             }
         }
 
@@ -297,22 +286,8 @@ class PlannerCoordinator(
             }
 
             matchingRecs.forEach { savedRec ->
-                val feedback = FeedbackForPlanner(
-                    userId = request.userId,
-                    todoId = rejected.todoId,
-                    userEnergy = savedRec.energyLevel,
-                    workingTimeLeft = savedRec.workingTimeLeft,
-                    accepted = false,
-                    reason = rejected.reason,
-                    score = savedRec.score,
-                    timeUntilDue = savedRec.timeUntilDue,
-                    effort = savedRec.effort,
-                    isOwnRecommendation = true,
-                    category = savedRec.category
-                )
-                val targetPlanner = planners.firstOrNull { it.plannerType == savedRec.plannerType }
-                println("👉 [COORDINATOR] Sende REJECTED Feedback an Planner: ${savedRec.plannerType} (Gefunden: ${targetPlanner != null})")
-                targetPlanner?.processUserFeedback(feedback)
+                savedRec.isAccepted = false
+                savedRec.feedbackReason = rejected.reason
             }
         }
         println("==================================================")
@@ -336,8 +311,7 @@ class PlannerCoordinator(
         validateUserExists(userId, userRepository)
 
         // 1. Pause-Todos aus der DB holen oder Fallbacks generieren
-        val allTodos = todoRepository.findAll()
-        val pauseCandidates = allTodos.filter { it.effort == 0 && (it.userId == userId || it.userId.isBlank()) }
+        val pauseCandidates = todoRepository.findByUserIdOrBlankAndEffort(userId, 0)
 
         val candidatePool = if (pauseCandidates.isNotEmpty()) {
             pauseCandidates
@@ -427,7 +401,7 @@ class PlannerCoordinator(
     ): PlannerRecommendationsResponse = lock.withLock {
         validateUserExists(userId, userRepository)
 
-        val matchPool = todoRepository.findActivePlannerTodosForUser(userId)
+        val matchPool = todoRepository.findOpenProjectTodosForUser(userId)
         val nonSnoozedPool = filterAvailableTodos(matchPool)
 
         if (nonSnoozedPool.isEmpty()) {
@@ -588,10 +562,10 @@ class PlannerCoordinator(
 
         val currentHour = LocalTime.now(clock).hour
         val currentTimeMillis = clock.millis()
-        val matchPool = todoRepository.findActivePlannerTodosForUser(userId)
+        val matchPool = todoRepository.findOpenProjectTodosForUser(userId)
 
         if (matchPool.isEmpty()) {
-            return DailyBlueprintResponse(roundId = "", userId = userId, generatedAtHour = currentHour, slots = emptyList())
+            return DailyBlueprintResponse(roundId = UUID.randomUUID().toString(), userId = userId, generatedAtHour = currentHour, slots = emptyList())
         }
 
         val settings = plannerSettingsRepository.findById(userId).orElseGet {
@@ -708,5 +682,65 @@ class PlannerCoordinator(
         planners.forEach { it.runReTraining(userId = userId) }
         // Für Gemini: hier müssen wir noch besprechen, ob wir bei Bayes nur die Daten für diesen User löschen müssen
         recommendationRoundRepository.deleteAll()
+    }
+
+    @Scheduled(cron = "0 0 0 * * *") // Jeden Tag um Mitternacht
+    @Transactional
+    fun runMidnightTraining() {
+        println("🌙 [MIDNIGHT AI TRAINING] Starte nächtliches Batch-Training mit Cross-Learning...")
+
+        val zone = ZoneId.systemDefault()
+
+        val todayMidnight = LocalDate.now()
+            .atStartOfDay(zone)
+            .toInstant()
+            .toEpochMilli()
+
+        val yesterdayMidnight = LocalDate.now()
+            .minusDays(1)
+            .atStartOfDay(zone)
+            .toInstant()
+            .toEpochMilli()
+
+        // 1. Alle Runden des gestrigen Tages holen
+        val pendingRounds = recommendationRoundRepository.findAllByCreatedAtBetween(yesterdayMidnight, todayMidnight)
+
+        if (pendingRounds.isEmpty()) {
+            println("🌙 [MIDNIGHT AI TRAINING] Keine Runden für den Zeitraum gefunden. Überspringe Training.")
+            return
+        }
+
+        pendingRounds.forEach { round ->
+            // Nur unverarbeitete Recommendations mit einer bewussten User-Entscheidung
+            val pendingRecommendations = round.recommendations.filter { !it.isProcessed && it.isAccepted != null }
+
+            pendingRecommendations.forEach { rec ->
+                val isOwn = (rec.plannerType == planners.firstOrNull()?.plannerType) // oder passend ermittelt
+
+                val feedbackForPlanner = FeedbackForPlanner(
+                    userId = round.userId,
+                    todoId = rec.todoId,
+                    userEnergy = rec.energyLevel,
+                    workingTimeLeft = rec.workingTimeLeft,
+                    accepted = rec.isAccepted!!,
+                    reason = rec.feedbackReason,
+                    score = rec.score,
+                    timeUntilDue = rec.timeUntilDue,
+                    effort = rec.effort,
+                    category = rec.category,
+                    isOwnRecommendation = true // oder ob es der eigene Vorschlag war
+                )
+
+                // 🚀 Beide Planner lernen aus dem Feedback (Cross-Learning)
+                planners.forEach { planner ->
+                    planner.processUserFeedback(feedbackForPlanner)
+                }
+
+                rec.isProcessed = true
+            }
+            recommendationRoundRepository.save(round)
+        }
+
+        println("🌙 [MIDNIGHT AI TRAINING] Erfolgreich abgeschlossen! Beide KIs im Batch trainiert.")
     }
 }

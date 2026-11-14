@@ -146,4 +146,36 @@ interface TodoRepository : JpaRepository<TodoEntity, String>, JpaSpecificationEx
     @Modifying
     @Query("UPDATE TodoEntity t SET t.isArchived = false WHERE t.id = :id")
     fun restoreById(@Param("id") id: String): Int
+
+    @Query("""
+    SELECT t FROM TodoEntity t 
+    WHERE t.isArchived = false 
+      AND t.done = false
+      AND t.milestoneId IS NOT NULL 
+      AND t.milestoneId <> ''
+      AND t.teamStatus = 'OPEN'
+      AND (
+        t.assignedUserId = :userId 
+        OR t.assignedUserId IS NULL 
+        OR t.assignedUserId = ''
+      )
+      AND EXISTS (
+          SELECT pm FROM ProjectMemberEntity pm 
+          JOIN pm.project p
+          JOIN p.milestones m
+          WHERE pm.user.id = :userId 
+            AND m.id = t.milestoneId
+      )
+""")
+    fun findOpenProjectTodosForUser(@Param("userId") userId: String): List<TodoEntity>
+
+    @Query("""
+    SELECT t FROM TodoEntity t 
+    WHERE (t.userId = :userId OR t.userId IS NULL OR t.userId = '') 
+      AND t.effort = :effort
+""")
+    fun findByUserIdOrBlankAndEffort(
+        @Param("userId") userId: String,
+        @Param("effort") effort: Int
+    ): List<TodoEntity>
 }
