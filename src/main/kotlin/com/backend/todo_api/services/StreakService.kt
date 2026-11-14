@@ -1,6 +1,5 @@
 package com.backend.todo_api.services
 
-import com.backend.todo_api.data.entity.TodoEntity
 import com.backend.todo_api.data.entity.UserEntity
 import com.backend.todo_api.data.repository.MilestoneRepository
 import com.backend.todo_api.data.repository.ProjectRepository
@@ -8,7 +7,7 @@ import com.backend.todo_api.data.repository.TodoRepository
 import com.backend.todo_api.data.repository.UserRepository
 import com.backend.todo_api.dto.ProjectStreakInfoDto
 import com.backend.todo_api.dto.StreakInfoDto
-import com.backend.todo_api.model.ActionType
+import com.backend.todo_api.model.enums.ActionType
 import com.backend.todo_api.model.toSecurityResource
 import org.springframework.stereotype.Service
 import java.time.DayOfWeek

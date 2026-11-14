@@ -1,5 +1,6 @@
 package com.backend.todo_api.model
 
+import com.backend.todo_api.model.enums.PatternTypeEnum
 import com.backend.todo_api.utils.AiTextUtil
 
 sealed class SanitizationPattern(val pattern: String) {

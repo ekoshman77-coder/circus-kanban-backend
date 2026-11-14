@@ -2,10 +2,9 @@ package com.backend.todo_api.mapper
 
 import com.backend.todo_api.data.entity.DepartmentEntity
 import com.backend.todo_api.data.repository.DepartmentSpecializationRepository
-import com.backend.todo_api.data.repository.ScopeRepository
 import com.backend.todo_api.dto.CreateDepartmentDto
 import com.backend.todo_api.dto.DepartmentDto
-import com.backend.todo_api.model.toEntity
+import com.backend.todo_api.model.enums.toEntity
 import org.springframework.stereotype.Component
 
 @Component

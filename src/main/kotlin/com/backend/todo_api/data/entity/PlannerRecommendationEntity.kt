@@ -38,5 +38,12 @@ class PlannerRecommendationEntity(
 
     var effort: Int = 0,
 
-    var reason: String = ""
+    var reason: String = "",
+
+    val category: String = "Allgemein",
+
+    // 🎯 Unsere neuen Felder für das rauschfreie Mitternachts-Training:
+    var isAccepted: Boolean? = null,
+    var feedbackReason: String? = null,
+    var isProcessed: Boolean = false
 )

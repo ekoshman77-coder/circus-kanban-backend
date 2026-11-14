@@ -1,18 +1,15 @@
 package com.backend.todo_api.services
 
 import com.backend.todo_api.data.entity.TodoEntity
-import com.backend.todo_api.data.entity.UserEntity
 import com.backend.todo_api.data.repository.MilestoneRepository
 import com.backend.todo_api.data.repository.ProjectMemberRepository
 import com.backend.todo_api.data.repository.TodoRepository
 import com.backend.todo_api.data.repository.UserRepository
 import com.backend.todo_api.dto.CreateTodoDto
-import com.backend.todo_api.dto.GamificationResult
-import com.backend.todo_api.dto.TodoBulkDto
 import com.backend.todo_api.dto.TodoDto
 import com.backend.todo_api.exceptions.ActionForbiddenException
 import com.backend.todo_api.exceptions.UserDeletedException
-import com.backend.todo_api.model.ActionType
+import com.backend.todo_api.model.enums.ActionType
 import com.backend.todo_api.model.RewardUpdateResult
 import com.backend.todo_api.services.sanitization.SanitizationService
 import io.mockk.*

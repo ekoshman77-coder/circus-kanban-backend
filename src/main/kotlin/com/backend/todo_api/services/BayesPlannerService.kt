@@ -40,55 +40,81 @@ class BayesPlannerService(
         val todo = todoRepository.findById(feedback.todoId).orElse(null) ?: return
 
         if (feedback.accepted) {
-            // 🎉 BELOHNUNG: Nutzer hat die Empfehlung akzeptiert!
-            val effortCategory = if ((todo.effort ?: 0) > 3) "aufwendig" else "leicht"
-
-            updateScore(
-                userId = feedback.userId,
-                energy = feedback.userEnergy,
-                type = PreferenceType.EFFORT,
-                value = effortCategory,
-                plusPoints = 5
-            )
-        } else {
-            // 👎 BESTRAFUNG: Punkteabzug je nach Ablehnungsgrund (rejectReason)
-            when (feedback.rejectReason) {
-                "too_heavy" -> {
-                    val effortCategory = if ((todo.effort ?: 0) > 3) "aufwendig" else "leicht"
-                    updateScore(
-                        userId = feedback.userId,
-                        energy = feedback.userEnergy,
-                        type = PreferenceType.EFFORT,
-                        value = effortCategory,
-                        plusPoints = -10
-                    )
-                }
-
-                "too_long" -> {
-                    val timeCategory = if ((todo.effort ?: 0) > 3) "lang" else "kurz"
-                    updateScore(
-                        userId = feedback.userId,
-                        energy = EnergyLevel.ANY,
-                        type = PreferenceType.TIME,
-                        value = timeCategory,
-                        plusPoints = -8
-                    )
-                }
-
-                "no_motivation" -> {
+            // 🎉 AKZEPTIERT MIT BEWUSSTEM GRUND:
+            when (feedback.reason) {
+                "motivation" -> {
                     val todoTag = todo.category ?: "Standard"
                     updateScore(
                         userId = feedback.userId,
                         energy = EnergyLevel.ANY,
                         type = PreferenceType.MOTIVATION,
                         value = "Tag:$todoTag",
-                        plusPoints = -15
+                        plusPoints = 5
+                    )
+                }
+
+                "effort" -> {
+                    val effortCategory = if ((todo.effort ?: 0) > 3) "aufwendig" else "leicht"
+                    updateScore(
+                        userId = feedback.userId,
+                        energy = feedback.userEnergy,
+                        type = PreferenceType.EFFORT,
+                        value = effortCategory,
+                        plusPoints = 5
+                    )
+                }
+
+                "time" -> {
+                    val timeCategory = if ((todo.effort ?: 0) > 3) "lang" else "kurz"
+                    updateScore(
+                        userId = feedback.userId,
+                        energy = EnergyLevel.ANY,
+                        type = PreferenceType.TIME,
+                        value = timeCategory,
+                        plusPoints = 5
+                    )
+                }
+
+                else -> {
+                    // Standard-Klick ohne Grund (oder ein unbekannter Wert) -> Kein Ratespiel für Bayes.
+                }
+            }
+        } else {
+            // 👎 ABGELEHNT: Wie besprochen nur bestrafen, wenn Bayes auch der Urheber war!
+            if (!feedback.isOwnRecommendation) {
+                return
+            }
+
+            when (feedback.reason) {
+                "too_heavy" -> {
+                    val effortCategory = if ((todo.effort ?: 0) > 3) "aufwendig" else "leicht"
+                    updateScore(
+                        feedback.userId,
+                        feedback.userEnergy,
+                        PreferenceType.EFFORT,
+                        effortCategory,
+                        -10
+                    )
+                }
+
+                "too_long" -> {
+                    val timeCategory = if ((todo.effort ?: 0) > 3) "lang" else "kurz"
+                    updateScore(feedback.userId, EnergyLevel.ANY, PreferenceType.TIME, timeCategory, -8) //[cite: 7]
+                }
+
+                "no_motivation" -> {
+                    val todoTag = todo.category ?: "Standard"
+                    updateScore(
+                        feedback.userId,
+                        EnergyLevel.ANY,
+                        PreferenceType.MOTIVATION,
+                        "Tag:$todoTag",
+                        -15
                     )
                 }
             }
         }
     }
-
 
     // Hilfsmethode: Sucht den Eintrag oder legt ihn neu an und verändert den Score
     private fun updateScore(userId: String, energy: EnergyLevel, type: PreferenceType, value: String, plusPoints: Int) {
@@ -147,23 +173,35 @@ class BayesPlannerService(
         )
      }
 
-    // =============================================================================
-    // 🛠️ PRIVATE HILFSMETHODEN FÜR DAS REFACTORING
-    // =============================================================================
+    override fun runReTraining(userId: String) {
+        preferenceRepository.deleteByUserId(userId)
+    }
 
-
+    // =============================================================================
+    // 🛠️ PRIVATE HILFSMETHODEN
+    // =============================================================================
     private fun applyAiFocusFiltering(pool: List<TodoEntity>, userEnergy: EnergyLevel): List<TodoEntity> {
-        var filteredPool = pool
+        // 1. Dringende Aufgaben IMMER komplett unangetastet lassen!
+        val urgentTasks = pool.filter { isUrgent(it) }
+        val nonUrgentPool = pool.filter { !isUrgent(it) }
+
+        // 2. Den Fokus-Filter nur auf die normalen, nicht-dringenden Aufgaben anwenden
+        var filteredPool = nonUrgentPool
         if (userEnergy == EnergyLevel.LOW) {
-            filteredPool = pool.filter { focusPredictorService.predict(it.task) == FocusType.LOW_FOCUS }
+            filteredPool = nonUrgentPool.filter { focusPredictorService.predict(it.task) == FocusType.LOW_FOCUS }
         } else if (userEnergy == EnergyLevel.HIGH) {
-            val highFocusTasks = pool.filter { focusPredictorService.predict(it.task) == FocusType.HIGH_FOCUS }
+            val highFocusTasks = nonUrgentPool.filter { focusPredictorService.predict(it.task) == FocusType.HIGH_FOCUS }
             if (highFocusTasks.isNotEmpty()) {
                 filteredPool = highFocusTasks
             }
         }
-        // Bugfix im Fallback: Wenn filteredPool leer ist, nimm das originale pool!
-        return if (filteredPool.isEmpty()) pool else filteredPool
+
+        if (filteredPool.isEmpty()) {
+            filteredPool = nonUrgentPool
+        }
+
+        // 3. Dringende Aufgaben und gefilterten Pool wieder zusammenführen
+        return urgentTasks + filteredPool
     }
 
     private fun calculateScoresAndGetWinner(
@@ -181,8 +219,20 @@ class BayesPlannerService(
             val isHeavy = (todo.effort ?: 0) > 3
 
             // Dringlichkeit
-            if (isUrgent(todo)) {
-                score += 100
+            val currentTime = System.currentTimeMillis()
+            val timeDifference = todo.dueDate - currentTime
+            val hoursOverdueOrUntilDue = timeDifference / (1000.0 * 60 * 60)
+
+            if (hoursOverdueOrUntilDue < 0) {
+                // 🚨 1. Fall: BEREITS ÜBERSCHRITTEN (Vergangenheit)
+                // Starker Basis-Boost plus zusätzlicher Push pro vergangenem Tag
+                val daysOverdue = -hoursOverdueOrUntilDue / 24.0
+                val overdueScore = 200 + (daysOverdue * 50).toInt()
+                score += overdueScore
+            } else if (hoursOverdueOrUntilDue <= 48) {
+                // ⚡ 2. Fall: Fällig in den nächsten 48 Stunden (heute / morgen)
+                // Ein kräftiger, dominanter Boost, der normale Aufgaben sicher schlägt.
+                score += 150
             }
 
             // Kombi-Score oder Zeitfenster-Score
@@ -226,23 +276,4 @@ class BayesPlannerService(
 
         return scoredTodos.maxByOrNull { it.second }
     }
-
-//    @Transactional
-//    override fun snoozeTodoInBackend(todoId: String, snoozeDurationInMinutes: Int): TodoEntity? {
-//        val todo = todoRepository.findById(todoId).orElse(null) ?: return null
-//
-//        // Aktuelle Zeit + X Minuten in Millisekunden rechnen
-//        val millisInFuture = snoozeDurationInMinutes * 60 * 1000L
-//        todo.snoozedUntil = System.currentTimeMillis() + millisInFuture
-//
-//        val currentDateTime = java.time.Instant.ofEpochMilli(System.currentTimeMillis())
-//        val snoozedUntilDateTime = java.time.Instant.ofEpochMilli(todo.snoozedUntil)
-//        println("⏰ --- SNOOZE ZEITZONEN-CHECK ---")
-//        println("Aktuelle Serverzeit UTC: $currentDateTime")
-//        println("Ticket gesnoozed bis UTC: $snoozedUntilDateTime")
-//        println("Roher Long-Wert in DB: ${todo.snoozedUntil}")
-//        println("---------------------------------")
-//
-//        return todoRepository.save(todo)
-//    }
 }

@@ -1,7 +1,6 @@
 package com.backend.todo_api.dto
 
-import com.backend.todo_api.model.ScopeType
-import com.backend.todo_api.model.toEntity
+import com.backend.todo_api.model.enums.ScopeType
 
 open class CreateNoteDto (
     val title: String = "",

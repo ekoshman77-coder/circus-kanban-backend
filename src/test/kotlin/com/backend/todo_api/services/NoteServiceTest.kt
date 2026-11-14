@@ -8,9 +8,9 @@ import com.backend.todo_api.data.repository.ScopeRepository
 import com.backend.todo_api.dto.CreateNoteDto
 import com.backend.todo_api.dto.NoteDto
 import com.backend.todo_api.exceptions.ActionForbiddenException
-import com.backend.todo_api.model.ActionType
-import com.backend.todo_api.model.RoleType
-import com.backend.todo_api.model.ScopeType
+import com.backend.todo_api.model.enums.ActionType
+import com.backend.todo_api.model.enums.RoleType
+import com.backend.todo_api.model.enums.ScopeType
 import com.backend.todo_api.model.UserContext
 import io.mockk.every
 import io.mockk.mockk

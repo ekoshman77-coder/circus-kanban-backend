@@ -12,15 +12,12 @@ import com.backend.todo_api.data.repository.UserRepository
 import com.backend.todo_api.dto.UserResponseDto
 import com.backend.todo_api.exceptions.ActionForbiddenException
 import com.backend.todo_api.exceptions.ProjectNotFoundException
-import com.backend.todo_api.exceptions.TeamValidationException
 import com.backend.todo_api.exceptions.UserNotFoundException
-import com.backend.todo_api.model.ActionType
-import com.backend.todo_api.model.RoleType
+import com.backend.todo_api.model.enums.ActionType
+import com.backend.todo_api.model.enums.RoleType
 import com.backend.todo_api.model.UserContext
 import io.mockk.every
-import io.mockk.just
 import io.mockk.mockk
-import io.mockk.runs
 import io.mockk.verify
 import org.junit.jupiter.api.Assertions.*
 import org.junit.jupiter.api.BeforeEach

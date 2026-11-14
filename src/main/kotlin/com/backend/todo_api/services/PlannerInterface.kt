@@ -17,4 +17,6 @@ interface PlannerInterface {
         candidates: List<TodoEntity>,
         userEnergy: EnergyLevel,
         workingTimeLeft: Long): PlannerRecomendation?
+
+    fun runReTraining(userId: String)
 }

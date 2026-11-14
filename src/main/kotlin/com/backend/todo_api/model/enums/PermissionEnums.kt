@@ -1,4 +1,4 @@
-package com.backend.todo_api.model
+package com.backend.todo_api.model.enums
 
 import com.backend.todo_api.data.entity.ActionEntity
 import com.backend.todo_api.data.entity.DepartmentSpecializationEntity

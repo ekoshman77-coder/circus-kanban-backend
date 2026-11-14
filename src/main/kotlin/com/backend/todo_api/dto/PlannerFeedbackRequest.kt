@@ -1,13 +1,18 @@
 package com.backend.todo_api.dto
 
-data class RejectedTodoFeedback(
+/**
+ * Allgemeines Feedback für ein einzelnes Todo.
+ * @param todoId Die ID des Todos.
+ * @param reason Der Grund für die Entscheidung (z. B. "too_heavy", "too_long" bei Rejection
+ *               oder "motivation", "deadline", "energy" bei Acceptance).
+ */
+data class TodoFeedback(
     val todoId: String,
-    val rejectReason: String? = null // z. B. "too_heavy", "too_long", "no_motivation"
+    val reason: String? = null
 )
-
 data class PlannerFeedbackRequest(
     val userId: String,
     val roundId: String,
-    val acceptedTodoId: String? = null,
-    val rejectedTodos: List<RejectedTodoFeedback> = emptyList()
+    val acceptedTodo: TodoFeedback?,
+    val rejectedTodos: List<TodoFeedback> = emptyList()
 )

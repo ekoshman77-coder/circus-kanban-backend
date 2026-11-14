@@ -7,6 +7,7 @@ data class NodeConfig(
     val id: String = "",
     val type: NodeType = NodeType.LEAF,
     val inputCount: Int = 1,
+    val inputIndices: List<Int> = emptyList(), // 🌟 NEU: Welche Indizes aus rawInputs?
     val children: List<String> = emptyList()
 )
 

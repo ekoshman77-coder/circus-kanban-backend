@@ -9,10 +9,10 @@ import com.backend.todo_api.dto.DepartmentDto
 import com.backend.todo_api.dto.SearchUserDto
 import com.backend.todo_api.exceptions.UserDeletedException
 import com.backend.todo_api.mapper.DepartmentMapper
-import com.backend.todo_api.model.ActionType
+import com.backend.todo_api.model.enums.ActionType
 import com.backend.todo_api.model.DepartmentSecurityResource
-import com.backend.todo_api.model.RoleType
-import com.backend.todo_api.model.ScopeType
+import com.backend.todo_api.model.enums.RoleType
+import com.backend.todo_api.model.enums.ScopeType
 import com.backend.todo_api.model.UserSecurityResource
 import org.springframework.stereotype.Service
 

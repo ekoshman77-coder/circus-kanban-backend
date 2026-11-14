@@ -1,0 +1,12 @@
+{
+  "name": "PlannerEvaluationNet_Specialized",
+  "nodes": [
+    { "id": "LEAF_TIME_1", "type": "LEAF", "inputCount": 2, "inputIndices": [0, 3] },
+    { "id": "LEAF_TIME_2", "type": "LEAF", "inputCount": 2, "inputIndices": [0, 3] },
+    { "id": "LEAF_ENERGY_1", "type": "LEAF", "inputCount": 2, "inputIndices": [1, 2] },
+    { "id": "LEAF_ENERGY_2", "type": "LEAF", "inputCount": 2, "inputIndices": [1, 2] },
+    { "id": "BRANCH_RESOURCES", "type": "BRANCH", "children": ["LEAF_TIME_1", "LEAF_TIME_2"] },
+    { "id": "BRANCH_URGENCY", "type": "BRANCH", "children": ["LEAF_ENERGY_1", "LEAF_ENERGY_2"] },
+    { "id": "ROOT", "type": "ROOT", "children": ["BRANCH_RESOURCES", "BRANCH_URGENCY"] }
+  ]
+}

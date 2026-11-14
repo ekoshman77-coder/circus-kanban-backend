@@ -29,11 +29,19 @@ class CategoryPredictorServiceTest {
 
         // 2. AKTION & ÜBERPRÜFUNG: Direkt über die zustandslose Methode testen!
         // "Margarine" kennt sie nicht, aber "kaufen" zieht es stark zu Einkauf
-        val vorschlag1 = predictorService.predictStateless("Margarine kaufen", trainingsDaten)
+        val vorschlag1 = predictorService.predictStateless<String>(
+            "Margarine kaufen",
+            trainingsDaten,
+            textExtractor = { I -> I}
+        )
         assertEquals("Einkauf", vorschlag1)
 
         // "IntelliJ" kennt sie nicht, aber "Backend" und "fixen" zieht es zu Arbeit
-        val vorschlag2 = predictorService.predictStateless("IntelliJ Backend Fehler fixen", trainingsDaten)
+        val vorschlag2 = predictorService.predictStateless(
+            "IntelliJ Backend Fehler fixen",
+            trainingsDaten,
+            textExtractor = { I -> I}
+            )
         assertEquals("Arbeit", vorschlag2)
     }
 
@@ -45,7 +53,11 @@ class CategoryPredictorServiceTest {
         )
 
         // Wenn wir jetzt einen Satz mit "und" prüfen, darf die KI NICHT automatisch Einkauf vorschlagen.
-        val vorschlag = predictorService.predictStateless("Neuen Code und Features programmieren", trainingsDaten)
+        val vorschlag = predictorService.predictStateless<String>(
+            "Neuen Code und Features programmieren",
+            trainingsDaten,
+            textExtractor = {I -> I}
+        )
 
         // Dank der Stoppwort-Bremse siegt "Arbeit"!
         assertEquals("Arbeit", vorschlag)

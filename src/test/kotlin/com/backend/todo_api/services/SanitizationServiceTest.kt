@@ -2,11 +2,10 @@ package com.backend.todo_api.services
 
 import com.backend.todo_api.data.entity.SensitivePatternEntity
 import com.backend.todo_api.data.repository.SensitivePatternRepository
-import com.backend.todo_api.data.repository.TodoRepository
 import com.backend.todo_api.dto.SanitizationFeedbackDto
 import com.backend.todo_api.dto.SanitizationFeedbackItemDto
 import com.backend.todo_api.dto.SensitiveMatchDto
-import com.backend.todo_api.model.PatternTypeEnum
+import com.backend.todo_api.model.enums.PatternTypeEnum
 import com.backend.todo_api.model.SanitizationPattern
 import com.backend.todo_api.services.sanitization.SanitizationService
 import io.mockk.every

@@ -54,6 +54,10 @@ class NeuralPlannerService(
         )
     }
 
+    override fun runReTraining(userId: String) {
+        neuralNetwork.runReTraining()
+    }
+
     override fun processUserFeedback(feedback: FeedbackForPlanner) {
         // Feedback verarbeiten: Backpropagation/Training auslösen
         val target = if (feedback.accepted) 1.0 else 0.0
@@ -62,37 +66,46 @@ class NeuralPlannerService(
             normalizeDueDate(feedback.timeUntilDue),
             normalizeEffort(feedback.effort),
             normalizeEnergy(feedback.userEnergy),
-            normalizeWorkingTime(feedback.workingTimeLeft)
+            normalizeWorkingTime(feedback.workingTimeLeft),
+            normalizeCategory(feedback.category)
+
         )
         println("🏋️ [TRAIN] Feedback verarbeitet für Todo-ID ${feedback.todoId} | Target: $target")
         // Netz mit dem Feedback des Nutzers trainieren
-        neuralNetwork.train(inputs, target)
+        neuralNetwork.train(inputs, target, feedback.isOwnRecommendation)
     }
 
     // =============================================================================
     // 🛠️ HILFSMETHODEN FÜR DIE NORMALISIERUNG (0.0 bis 1.0)
     // =============================================================================
-
-    private fun extractAndNormalizeInputs(
-        todo: TodoEntity,
-        userEnergy: EnergyLevel,
-        workingTimeLeft: Long
-    ): DoubleArray {
-        val currentTime = System.currentTimeMillis()
-        val timeUntilDue = if (todo.dueDate > 0) todo.dueDate - currentTime else Long.MAX_VALUE
-
-        val normDueDate = normalizeDueDate(timeUntilDue)
-        val normEffort = normalizeEffort(todo.effort)
+    fun extractAndNormalizeInputs(todo: TodoEntity, userEnergy: EnergyLevel, workingTimeLeft: Long): DoubleArray {
         val normEnergy = normalizeEnergy(userEnergy)
+        val normEffort = normalizeEffort(todo.effort)
+        val normCategory = normalizeCategory(todo.category)
 
-        // 💡 NEU & DYNAMISCH: Passt der Aufwand zur aktuellen Energie? (1.0 = perfektes Match)
-        val energyEffortMatch = 1.0 - kotlin.math.abs(normEnergy - normEffort)
+        val currentTime = System.currentTimeMillis()
+        val timeUntilDue = if (todo.dueDate > 0) todo.dueDate - currentTime else 0L
+        val normDueDate = normalizeDueDate(timeUntilDue)
+
+        // 🌟 PASSUNG BERECHNEN:
+        var fit = 1.0 - kotlin.math.abs(normEnergy - normEffort)
+
+        // Wenn die Energie LOW ist und der Effort > 4 steigt, dämpfen wir den Fit drastisch!
+        if (userEnergy == EnergyLevel.LOW && todo.effort > 4) {
+            fit *= 0.3 // Starker Malus für Effort 5+, damit er nicht gewinnt
+        }
+
+        // Ceytnot / Notfall-Schutz bleibt erhalten:
+        val energyEffortFit = kotlin.math.max(fit, normDueDate * 0.85)
+
+        val normWorkingTime = normalizeWorkingTime(workingTimeLeft)
 
         return doubleArrayOf(
-            normDueDate,                                    // Input 1: Fälligkeit (0.0 bis 1.0)
-            normEffort,                                     // Input 2: Aufwand (0.0 bis 1.0)
-            energyEffortMatch,                              // Input 3: Energy-Match (Jedes Todo hat einen ANDEREN Wert!)
-            normalizeWorkingTime(workingTimeLeft)     // Input 4: Passt Todo in verbleibende Zeit?
+            normEnergy,
+            energyEffortFit,
+            normDueDate,
+            normWorkingTime,
+            normCategory
         )
     }
 
@@ -108,6 +121,19 @@ class NeuralPlannerService(
     private fun normalizeEffort(effort: Int): Double {
         val maxEffort = 10.0
         return (effort.toDouble() / maxEffort).coerceIn(0.0, 1.0)
+    }
+
+    private fun normalizeCategory(category: String): Double {
+        return when (category.lowercase()) {
+            "sensorisch", "genuss", "pause" -> 0.2
+            "physisch", "bewegung" -> 0.6
+            "kognitiv", "arbeit", "mail" -> 0.9
+            else -> {
+                // Unbekannte Kategorien automatisch stabil auf 0.0 bis 1.0 verteilen
+                val hash = kotlin.math.abs(category.hashCode())
+                (hash % 100).toDouble() / 100.0
+            }
+        }
     }
 
     // 3. User Energy Enum in Zahl umwandeln

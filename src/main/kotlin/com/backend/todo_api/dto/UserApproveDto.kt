@@ -1,6 +1,6 @@
 package com.backend.todo_api.dto
 
-import com.backend.todo_api.model.RoleType
+import com.backend.todo_api.model.enums.RoleType
 import jakarta.validation.constraints.NotBlank
 import jakarta.validation.constraints.NotNull
 

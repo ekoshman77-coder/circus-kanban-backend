@@ -1,0 +1,30 @@
+{
+  "name": "PlannerEvaluationNetV9_5Leaves3Branches",
+  "nodes": [
+    { "id": "LEAF_1", "type": "LEAF", "inputCount": 1, "inputIndices": [0] },
+    { "id": "LEAF_2", "type": "LEAF", "inputCount": 1, "inputIndices": [1] },
+    { "id": "LEAF_3", "type": "LEAF", "inputCount": 1, "inputIndices": [2] },
+    { "id": "LEAF_4", "type": "LEAF", "inputCount": 1, "inputIndices": [3] },
+    { "id": "LEAF_5", "type": "LEAF", "inputCount": 1, "inputIndices": [4] },
+    {
+      "id": "BRANCH_1",
+      "type": "BRANCH",
+      "children": ["LEAF_1", "LEAF_2"]
+    },
+    {
+      "id": "BRANCH_2",
+      "type": "BRANCH",
+      "children": ["LEAF_3", "LEAF_4"]
+    },
+    {
+      "id": "BRANCH_3",
+      "type": "BRANCH",
+      "children": ["LEAF_5"]
+    },
+    {
+      "id": "ROOT",
+      "type": "ROOT",
+      "children": ["BRANCH_1", "BRANCH_2", "BRANCH_3"]
+    }
+  ]
+}

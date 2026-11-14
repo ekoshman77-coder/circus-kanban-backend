@@ -7,11 +7,9 @@ import com.backend.todo_api.dto.DelegateDraftDto
 import com.backend.todo_api.dto.DraftChainDto
 import com.backend.todo_api.mapper.toDto
 import com.backend.todo_api.mapper.toEntity
-import com.backend.todo_api.model.DepartmentSpecializationType
-import com.backend.todo_api.model.ScopeType
-import com.backend.todo_api.model.UserContext
+import com.backend.todo_api.model.enums.DepartmentSpecializationType
+import com.backend.todo_api.model.enums.ScopeType
 import org.springframework.data.domain.Sort
-import org.springframework.data.jpa.domain.Specification
 import org.springframework.stereotype.Service
 
 @Service

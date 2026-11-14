@@ -1,4 +1,4 @@
-package com.backend.todo_api.model
+package com.backend.todo_api.model.enums
 
 enum class PatternTypeEnum {
     REGEX,

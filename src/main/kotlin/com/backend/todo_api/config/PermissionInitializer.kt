@@ -2,7 +2,11 @@ package com.backend.todo_api.config
 
 import com.backend.todo_api.data.entity.*
 import com.backend.todo_api.data.repository.*
-import com.backend.todo_api.model.*
+import com.backend.todo_api.model.enums.ActionType
+import com.backend.todo_api.model.enums.DepartmentSpecializationType
+import com.backend.todo_api.model.enums.ResourceType
+import com.backend.todo_api.model.enums.RoleType
+import com.backend.todo_api.model.enums.ScopeType
 import com.backend.todo_api.services.RolePermissionAdminService
 import org.springframework.boot.CommandLineRunner
 import org.springframework.core.annotation.Order

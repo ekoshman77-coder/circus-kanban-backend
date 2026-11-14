@@ -22,17 +22,19 @@ interface TodoRepository : JpaRepository<TodoEntity, String>, JpaSpecificationEx
     fun findByUserIdAndMilestoneIdIn(userId: String, milestoneIds: List<String>): List<TodoEntity>
 
     fun findByAssignedUserId(assignedUserId: String): List<TodoEntity>
+
     @Transactional
-    @Modifying
+    @Modifying(clearAutomatically = true, flushAutomatically = true)
     @Query("""
-    DELETE FROM TodoEntity 
-    WHERE effort = :effort 
-      AND done = :done 
-      AND createdAt < :todayMidnight
+    UPDATE TodoEntity t 
+    SET t.isArchived = true 
+    WHERE t.effort = :effort 
+      AND t.done = :done 
+      AND t.dueDate < :todayMidnight
 """)
-    fun deleteOldPauseTickets(
+    fun archiveOldPauseTickets(
         @Param("effort") effort: Int,
-        @Param("done") done: Boolean, // 🌟 Hier auch auf done angepasst
+        @Param("done") done: Boolean,
         @Param("todayMidnight") todayMidnight: Long
     ): Int
 
@@ -64,7 +66,6 @@ interface TodoRepository : JpaRepository<TodoEntity, String>, JpaSpecificationEx
     //         -- BLOCK 1: Meine privaten, persönlichen Aufgaben
     //        -- BLOCK 2: ALLE Aufgaben aus Projekten, bei denen ich im Team bin
     //     -- Zeitfenster-Schutz für bereits erledigte Aufgaben
-
     @Query("""
     SELECT t FROM TodoEntity t 
     WHERE t.isArchived = false 
@@ -145,4 +146,36 @@ interface TodoRepository : JpaRepository<TodoEntity, String>, JpaSpecificationEx
     @Modifying
     @Query("UPDATE TodoEntity t SET t.isArchived = false WHERE t.id = :id")
     fun restoreById(@Param("id") id: String): Int
+
+    @Query("""
+    SELECT t FROM TodoEntity t 
+    WHERE t.isArchived = false 
+      AND t.done = false
+      AND t.milestoneId IS NOT NULL 
+      AND t.milestoneId <> ''
+      AND t.teamStatus = 'OPEN'
+      AND (
+        t.assignedUserId = :userId 
+        OR t.assignedUserId IS NULL 
+        OR t.assignedUserId = ''
+      )
+      AND EXISTS (
+          SELECT pm FROM ProjectMemberEntity pm 
+          JOIN pm.project p
+          JOIN p.milestones m
+          WHERE pm.user.id = :userId 
+            AND m.id = t.milestoneId
+      )
+""")
+    fun findOpenProjectTodosForUser(@Param("userId") userId: String): List<TodoEntity>
+
+    @Query("""
+    SELECT t FROM TodoEntity t 
+    WHERE (t.userId = :userId OR t.userId IS NULL OR t.userId = '') 
+      AND t.effort = :effort
+""")
+    fun findByUserIdOrBlankAndEffort(
+        @Param("userId") userId: String,
+        @Param("effort") effort: Int
+    ): List<TodoEntity>
 }
